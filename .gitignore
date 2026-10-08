@@ -1,0 +1,23 @@
+# 依赖包（绝不能上传，后端拉下来后自己执行 npm i）
+node_modules/
+
+# 打包构建产物
+dist/
+dist-ssr/
+
+# 本地环境变量与配置文件
+*.local
+.env.local
+
+# 编辑器与系统缓存文件
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

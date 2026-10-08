@@ -1,0 +1,92 @@
+<template>
+  <el-aside :width="isCollapse ? '64px' : '220px'" class="sidebar">
+    <div class="logo">
+      <el-icon><Compass /></el-icon>
+      <span v-show="!isCollapse" class="logo-text">人间岗位寻宝司</span>
+    </div>
+
+    <el-menu
+      :default-active="activeMenu"
+      :collapse="isCollapse"
+      :collapse-transition="false"
+      router
+      background-color="#001529"
+      text-color="#b7bdc3"
+      active-text-color="#ffffff"
+    >
+      <el-menu-item
+        v-for="item in menuList"
+        :key="item.path"
+        :index="item.path"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
+        <template #title>{{ item.title }}</template>
+      </el-menu-item>
+    </el-menu>
+  </el-aside>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+const isCollapse = ref(false)
+
+// 监听 Navbar 派发的折叠事件
+const handleToggle = () => {
+  isCollapse.value = !isCollapse.value
+}
+
+onMounted(() => {
+  window.addEventListener('toggle-sidebar', handleToggle)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('toggle-sidebar', handleToggle)
+})
+
+const menuList = [
+  { path: '/dashboard', title: '首页概览', icon: 'HomeFilled' },
+  { path: '/resume', title: '简历中心', icon: 'Document' },
+  { path: '/job', title: '岗位推荐', icon: 'Briefcase' },
+  { path: '/interview', title: '面试辅导', icon: 'ChatLineRound' },
+  { path: '/practice', title: '实习实践', icon: 'OfficeBuilding' },
+  { path: '/policy', title: '就业政策', icon: 'Reading' }
+]
+
+const activeMenu = computed(() => route.path)
+</script>
+
+<style scoped>
+.sidebar {
+  background: #001529;
+  transition: width 0.3s;
+  overflow: hidden;
+}
+
+.logo {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  background: #002140;
+  letter-spacing: 1px;
+}
+
+.logo .el-icon {
+  font-size: 24px;
+}
+
+.logo-text {
+  white-space: nowrap;
+}
+
+.el-menu {
+  border-right: none;
+}
+</style>
