@@ -85,6 +85,18 @@ export const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           roles: ['student', 'counselor', 'admin'] // 企业HR不可见
         }
+      },
+      // ====== 新增：树形数据结构可视化（院系/专业管理，仅管理员可见） ======
+      {
+        path: 'dept',
+        name: 'Dept',
+        component: () => import('@/views/dept/index.vue'),
+        meta: {
+          title: '院系专业',
+          icon: 'SetUp',
+          requiresAuth: true,
+          roles: ['admin'] // 仅院系管理员可见与访问
+        }
       }
     ]
   },

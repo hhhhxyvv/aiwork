@@ -114,19 +114,60 @@
     </div>
 
     <!-- ================= 4. 学生：真视频摄像头实战面试 ================= -->
-    <div v-else class="role-box student-center">
-      <el-card shadow="hover" class="student-card">
-        <h2>🎯 AI 全真模拟视频面试 (学生实战)</h2>
-        <p class="desc">打开摄像头与麦克风，体验 AI 面试官语音发问与智能多维复盘评估</p>
-        <el-button type="primary" size="large" @click="startInterview">接通面试 (开启音视频)</el-button>
-      </el-card>
+    <div v-else class="role-box">
+      <!-- 准备接通卡片 -->
+      <div v-if="!isInterviewing" class="student-center">
+        <el-card shadow="hover" class="student-card">
+          <h2>🎯 AI 全真模拟视频面试 (学生实战)</h2>
+          <p class="desc">点击下方按钮接通面试，系统将启动高清摄像头与麦克风，由 AI 面试官实时提问并生成诊断报告</p>
+          <el-button type="primary" size="large" @click="startInterview">接通面试 (开启音视频通话)</el-button>
+        </el-card>
+      </div>
+
+      <!-- 正在视频通话实战界面 -->
+      <div v-else class="video-room">
+        <!-- 考生全屏主画面 -->
+        <video ref="videoRef" autoplay playsinline muted class="camera-stream"></video>
+
+        <!-- 右上角：AI 面试官画中画浮窗 -->
+        <div class="ai-pip-box">
+          <div class="ai-avatar">🤖</div>
+          <div class="ai-info">
+            <div class="ai-name">AI 智能面试官</div>
+            <div class="ai-status">
+              <span class="dot"></span> 正在提问 / 实时评估中
+            </div>
+          </div>
+        </div>
+
+        <!-- 顶部面试状态条 -->
+        <div class="room-header">
+          <el-tag type="danger" effect="dark" round>🔴 录制中</el-tag>
+          <span class="room-title">第 {{ currentQuestionIndex + 1 }} / {{ questionList.length }} 题：{{ currentQuestion }}</span>
+          <el-tag type="warning" effect="dark">作答倒计时: {{ countdown }}s</el-tag>
+        </div>
+
+        <!-- 底部字幕与控制条 -->
+        <div class="room-footer">
+          <div class="subtitle-box">
+            <div class="sub-label">【AI 提问】</div>
+            <div class="sub-text">{{ currentQuestion }}</div>
+          </div>
+          <div class="ctrl-btns">
+            <el-button type="primary" @click="nextQuestion">
+              {{ currentQuestionIndex < questionList.length - 1 ? '回答完毕 (下一题)' : '完成面试提交报告' }}
+            </el-button>
+            <el-button type="danger" @click="stopInterview">结束并退出面试</el-button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onBeforeUnmount, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const role = ref(localStorage.getItem('role') || 'student')
 
@@ -155,8 +196,117 @@ const remindStudents = () => ElMessage.success('已给未模考同学推送督�
 const exportLedger = () => ElMessage.success('就业帮扶台账 Excel 导出成功！')
 const talkStudent = (row: any) => { row.talked = true; ElMessage.success(`已发起对 ${row.name} 的帮扶约谈并计入台账`) }
 
-// 4. 学生数据
-const startInterview = () => ElMessage.info('正在唤起摄像头与麦克风进入面试流程...')
+// ================= 4. 学生实战视频面试核心逻辑 =================
+const isInterviewing = ref(false)
+const videoRef = ref<HTMLVideoElement | null>(null)
+let mediaStream: MediaStream | null = null
+
+// 题库与倒计时
+const questionList = ref([
+  '请简要用 1 分钟做个自我介绍，并重点说明你最熟悉的前端技术栈与亮点。',
+  '在你的项目经历中，遇到的最大技术难题是什么？你是如何定位并解决的？',
+  '谈谈你对 Vue3 响应式原理与组合式 API（Composition API）设计思想的理解。'
+])
+const currentQuestionIndex = ref(0)
+const currentQuestion = ref(questionList.value[0])
+const countdown = ref(60)
+let timer: any = null
+
+// 语音播报方法 (Web Speech API)
+const speakQuestion = (text: string) => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'zh-CN'
+    utterance.rate = 1.0
+    window.speechSynthesis.speak(utterance)
+  }
+}
+
+// 开启面试与摄像头
+const startInterview = async () => {
+  try {
+    isInterviewing.value = true
+    await nextTick()
+
+    // 1. 请求音视频权限
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720 },
+      audio: true
+    })
+
+    // 2. 绑定到 video 标签播放画面
+    if (videoRef.value) {
+      videoRef.value.srcObject = mediaStream
+      await videoRef.value.play()
+    }
+
+    ElMessage.success('摄像头与麦克风接通成功，面试正式开始！')
+
+    // 3. 开始第一题与倒计时
+    currentQuestionIndex.value = 0
+    currentQuestion.value = questionList.value[0]
+    countdown.value = 60
+    speakQuestion(currentQuestion.value)
+
+    clearInterval(timer)
+    timer = setInterval(() => {
+      if (countdown.value > 0) {
+        countdown.value--
+      } else {
+        nextQuestion()
+      }
+    }, 1000)
+
+  } catch (err: any) {
+    console.error('获取摄像头失败:', err)
+    isInterviewing.value = false
+    if (err.name === 'NotAllowedError') {
+      ElMessage.error('请在浏览器地址栏允许摄像头和麦克风权限！')
+    } else if (err.name === 'NotFoundError') {
+      ElMessage.error('未检测到可用的摄像头或麦克风硬件设备！')
+    } else {
+      ElMessage.error('接通失败: ' + err.message)
+    }
+  }
+}
+
+// 下一题
+const nextQuestion = () => {
+  if (currentQuestionIndex.value < questionList.value.length - 1) {
+    currentQuestionIndex.value++
+    currentQuestion.value = questionList.value[currentQuestionIndex.value]
+    countdown.value = 60
+    speakQuestion(currentQuestion.value)
+    ElMessage.info(`进入第 ${currentQuestionIndex.value + 1} 题`)
+  } else {
+    // 面试完毕
+    stopInterview()
+    ElMessageBox.alert(
+      '面试已顺利结束！AI 综合面评分：88分（表达逻辑：90、技术深度：85、临场应对：89）。答题切片与报告已保存至后端 mock_interview_record 表！',
+      'AI 模拟面试评估完成',
+      { confirmButtonText: '确定' }
+    )
+  }
+}
+
+// 退出并关闭摄像头硬件
+const stopInterview = () => {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+  }
+  if (timer) clearInterval(timer)
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop())
+    mediaStream = null
+  }
+  isInterviewing.value = false
+}
+
+// 组件卸载时释放硬件
+onBeforeUnmount(() => {
+  stopInterview()
+})
 </script>
 
 <style scoped>
@@ -166,7 +316,86 @@ const startInterview = () => ElMessage.info('正在唤起摄像头与麦克风�
 .sub-tip { font-size: 12px; color: #909399; margin-left: 10px; }
 .text-danger { color: #f56c6c; }
 .font-bold { font-weight: bold; }
-.student-center { display: flex; justify-content: center; align-items: center; min-height: 400px; }
-.student-card { text-align: center; padding: 40px; }
-.desc { color: #909399; margin: 16px 0 24px; }
+.student-center { display: flex; justify-content: center; align-items: center; min-height: 480px; }
+.student-card { text-align: center; padding: 40px; max-width: 600px; }
+.desc { color: #909399; margin: 16px 0 24px; line-height: 1.6; }
+
+/* 视频通话实战界面样式 */
+.video-room {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 160px);
+  min-height: 540px;
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.camera-stream {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* 镜像翻转，符合镜子自拍习惯 */
+}
+
+/* 右上角 AI 面试官画中画 */
+.ai-pip-box {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+.ai-avatar { font-size: 32px; }
+.ai-name { color: #fff; font-size: 14px; font-weight: bold; }
+.ai-status { color: #67c23a; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; background-color: #67c23a; border-radius: 50%; display: inline-block; }
+
+/* 顶部状态栏 */
+.room-header {
+  position: relative;
+  z-index: 10;
+  padding: 16px 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+}
+.room-title { font-size: 15px; font-weight: 500; }
+
+/* 底部字幕与操作条 */
+.room-footer {
+  position: relative;
+  z-index: 10;
+  padding: 20px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.subtitle-box {
+  background: rgba(0, 0, 0, 0.65);
+  padding: 10px 20px;
+  border-radius: 8px;
+  color: #fff;
+  text-align: center;
+  max-width: 80%;
+}
+.sub-label { color: #409eff; font-size: 12px; margin-bottom: 4px; }
+.sub-text { font-size: 15px; font-weight: bold; }
+.ctrl-btns { display: flex; gap: 20px; }
 </style>

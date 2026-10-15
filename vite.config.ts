@@ -16,8 +16,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        changeOrigin: true
+        // 注意：这里坚决不要加 rewrite，原样把 /api 传递给后端 Spring Boot
       }
     }
   }

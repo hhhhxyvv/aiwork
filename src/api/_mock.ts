@@ -4,7 +4,7 @@
  */
 
 /** 是否启用 Mock 模式（true: 使用本地 Mock 数据；false: 使用真实后端） */
-export const USE_MOCK = true
+export const USE_MOCK = false
 
 /** 模拟网络延迟 */
 export const mockDelay = (ms = 600) => new Promise((resolve) => setTimeout(resolve, ms))
