@@ -1,12 +1,5 @@
 <template>
   <div class="login-container">
-    <!-- 背景装饰 -->
-    <div class="bg-decoration">
-      <div class="blob blob-1"></div>
-      <div class="blob blob-2"></div>
-      <div class="blob blob-3"></div>
-    </div>
-
     <!-- 登录卡片 -->
     <div class="login-card">
       <!-- 标题区 -->
@@ -94,6 +87,8 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { login } from '@/api/auth'
+import type { UserRole } from '@/api/types'
 import {
   User,
   Lock,
@@ -141,30 +136,32 @@ const rules: FormRules = {
   ]
 }
 
-// 登录处理
+// 登录处理：调用真实后端 /auth/login 获取有效 JWT
 const handleLogin = async () => {
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
     loading.value = true
     try {
-      // 模拟登录请求
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      const res = await login({
+        username: form.username,
+        password: form.password,
+        role: form.role as UserRole
+      })
 
-      // 模拟返回的 token
-      const token = 'mock-token-' + Date.now()
-
-      // 存入 localStorage
-      localStorage.setItem('token', token)
-      localStorage.setItem('role', form.role)
-      localStorage.setItem('username', form.username)
+      // 存入 localStorage（对齐后端 userInfo 新契约：department / className 替代 deptId）
+      localStorage.setItem('token', res.token)
+      localStorage.setItem('role', res.role || form.role)
+      localStorage.setItem('username', res.userInfo?.name || form.username)
+      localStorage.setItem('department', res.userInfo?.department || '')
+      localStorage.setItem('className', res.userInfo?.className || '')
 
       ElMessage.success('登录成功，正在跳转...')
       // 支持登录后回跳到原本想去的页面
       const redirect = (router.currentRoute.value.query.redirect as string) || '/'
       router.push(redirect)
-    } catch (err) {
-      ElMessage.error('登录失败，请稍后重试')
+    } catch {
+      // 请求拦截器已统一弹错（密码错误 / 后端不可用等），这里不再重复提示
     } finally {
       loading.value = false
     }
@@ -182,63 +179,8 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: url('/image/868f4b42c391617a6d201d8de590ab91.jpg') center center / cover no-repeat;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-/* 背景装饰球 */
-.bg-decoration {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.5;
-  animation: float 18s ease-in-out infinite;
-}
-
-.blob-1 {
-  width: 380px;
-  height: 380px;
-  background: #ff6ec4;
-  top: -80px;
-  left: -80px;
-}
-
-.blob-2 {
-  width: 460px;
-  height: 460px;
-  background: #4facfe;
-  bottom: -120px;
-  right: -100px;
-  animation-delay: -6s;
-}
-
-.blob-3 {
-  width: 300px;
-  height: 300px;
-  background: #ffd86f;
-  top: 40%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  animation-delay: -10s;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translate(0, 0) scale(1);
-  }
-  33% {
-    transform: translate(30px, -40px) scale(1.05);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
 }
 
 /* 登录卡片 */
@@ -247,7 +189,7 @@ const handleLogin = async () => {
   z-index: 10;
   width: 420px;
   padding: 40px 36px 28px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.85);
   border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(20px);

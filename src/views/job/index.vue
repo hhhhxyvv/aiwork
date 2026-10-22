@@ -45,7 +45,9 @@
         <el-table :data="adminAuditList" stripe style="width: 100%">
           <el-table-column prop="company" label="申请企业" width="180" />
           <el-table-column prop="jobTitle" label="招聘职位" width="150" />
-          <el-table-column prop="salary" label="标注薪资" width="130" />
+          <el-table-column label="标注薪资" width="170">
+            <template #default="{ row }">{{ row.minSalary }} - {{ row.maxSalary }} 元/月</template>
+          </el-table-column>
           <el-table-column prop="aiRisk" label="AI 风控诊断结论" min-width="240">
             <template #default="{ row }">
               <el-tag :type="row.riskLevel === 'safe' ? 'success' : 'danger'">
@@ -76,9 +78,11 @@
         </div>
 
         <el-table :data="hrJobList" stripe class="mt-4" style="width: 100%">
-          <el-table-column prop="title" label="职位名称" min-width="150" />
+          <el-table-column prop="jobTitle" label="职位名称" min-width="150" />
           <el-table-column prop="department" label="所属部门" width="130" />
-          <el-table-column prop="salary" label="薪资范围" width="130" />
+          <el-table-column label="薪资范围" width="170">
+            <template #default="{ row }">{{ row.minSalary }} - {{ row.maxSalary }} 元/月</template>
+          </el-table-column>
           <el-table-column prop="headcount" label="招聘人数" width="100" align="center" />
           <el-table-column prop="applyCount" label="已收到简历" width="110" align="center">
             <template #default="{ row }">
@@ -87,15 +91,15 @@
           </el-table-column>
           <el-table-column prop="status" label="岗位状态" width="100" align="center">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-                {{ row.status === 'active' ? '招聘中' : '已暂停' }}
+              <el-tag :type="row.status === 1 ? 'success' : 'info'">
+                {{ row.status === 1 ? '招聘中' : '已暂停' }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="180" align="center">
             <template #default="{ row }">
-              <el-button link :type="row.status === 'active' ? 'warning' : 'success'" @click="toggleJobStatus(row)">
-                {{ row.status === 'active' ? '暂停' : '恢复' }}
+              <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleJobStatus(row)">
+                {{ row.status === 1 ? '暂停' : '恢复' }}
               </el-button>
               <el-button link type="danger" @click="deleteJob(row)">下线</el-button>
             </template>
@@ -103,13 +107,23 @@
         </el-table>
       </el-card>
 
-      <!-- 发布弹窗 -->
-      <el-dialog v-model="publishVisible" title="发布新校招/实习岗位" width="500px">
+      <!-- 发布弹窗（入参对齐新契约：jobTitle / minSalary / maxSalary / status / requirements） -->
+      <el-dialog v-model="publishVisible" title="发布新校招/实习岗位" width="520px">
         <el-form :model="jobForm" label-width="80px">
-          <el-form-item label="职位名称"><el-input v-model="jobForm.title" placeholder="如：前端实习生" /></el-form-item>
+          <el-form-item label="职位名称"><el-input v-model="jobForm.jobTitle" placeholder="如：前端实习生" /></el-form-item>
           <el-form-item label="所属部门"><el-input v-model="jobForm.department" placeholder="如：技术中心" /></el-form-item>
-          <el-form-item label="薪资待遇"><el-input v-model="jobForm.salary" placeholder="如：180-220/天" /></el-form-item>
+          <el-form-item label="薪资范围">
+            <div class="salary-range">
+              <el-input-number v-model="jobForm.minSalary" :min="0" :max="100000" :step="500" controls-position="right" />
+              <span class="salary-sep">-</span>
+              <el-input-number v-model="jobForm.maxSalary" :min="0" :max="100000" :step="500" controls-position="right" />
+              <span class="salary-unit">元/月</span>
+            </div>
+          </el-form-item>
           <el-form-item label="招聘人数"><el-input-number v-model="jobForm.headcount" :min="1" :max="50" /></el-form-item>
+          <el-form-item label="岗位要求">
+            <el-input v-model="jobForm.requirements" type="textarea" :rows="3" placeholder="如：熟悉 Vue3 / TypeScript，有项目经验优先" />
+          </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="publishVisible = false">取消</el-button>
@@ -127,8 +141,10 @@
         </div>
         <el-table :data="publicJobList" stripe class="mt-4" style="width: 100%">
           <el-table-column prop="company" label="企业名称" width="180" />
-          <el-table-column prop="title" label="岗位名称" min-width="160" />
-          <el-table-column prop="salary" label="薪资" width="140" />
+          <el-table-column prop="jobTitle" label="岗位名称" min-width="160" />
+          <el-table-column label="薪资" width="170">
+            <template #default="{ row }">{{ row.minSalary }} - {{ row.maxSalary }} 元/月</template>
+          </el-table-column>
           <el-table-column prop="location" label="工作地点" width="120" />
           <el-table-column label="操作" width="160" align="center">
             <template #default="{ row }">
@@ -148,10 +164,10 @@ import { ElMessage } from 'element-plus'
 
 const role = ref(localStorage.getItem('role') || 'student')
 
-// 1. 管理员数据
+// 1. 管理员数据（薪资字段对齐新契约：minSalary / maxSalary 元/月）
 const adminAuditList = ref([
-  { company: '华智未来科技', jobTitle: '前端开发实习生', salary: '180-220/天', riskLevel: 'safe', aiRisk: '资质正常，薪酬符合常规', applyDate: '2026-10-08' },
-  { company: '盛达远航教育', jobTitle: '管培生 (保底20万)', salary: '15k-20k', riskLevel: 'danger', aiRisk: '⚠️ 疑似培训贷：要求入职前缴纳培训认证费', applyDate: '2026-10-07' }
+  { company: '华智未来科技', jobTitle: '前端开发实习生', minSalary: 4400, maxSalary: 6600, riskLevel: 'safe', aiRisk: '资质正常，薪酬符合常规', applyDate: '2026-10-08' },
+  { company: '盛达远航教育', jobTitle: '管培生 (保底20万)', minSalary: 15000, maxSalary: 20000, riskLevel: 'danger', aiRisk: '⚠️ 疑似培训贷：要求入职前缴纳培训认证费', applyDate: '2026-10-07' }
 ])
 const handleAdminApprove = (row: any) => {
   adminAuditList.value = adminAuditList.value.filter(item => item !== row)
@@ -162,29 +178,40 @@ const handleAdminReject = (row: any) => {
   ElMessage.error(`已驳回该异常岗位入校申请`)
 }
 
-// 2. HR 数据
+// 2. HR 数据（status 为数字：1-招聘中 0-已暂停）
 const hrJobList = ref([
-  { id: 1, title: '前端开发实习生', department: '研发中心', salary: '180-220/天', headcount: 3, applyCount: 14, status: 'active' },
-  { id: 2, title: 'Java后端研发', department: '云原生组', salary: '9k-14k', headcount: 2, applyCount: 22, status: 'active' }
+  { id: 1, jobTitle: '前端开发实习生', department: '研发中心', minSalary: 4400, maxSalary: 6600, headcount: 3, applyCount: 14, status: 1 },
+  { id: 2, jobTitle: 'Java后端研发', department: '云原生组', minSalary: 9000, maxSalary: 14000, headcount: 2, applyCount: 22, status: 1 }
 ])
 const publishVisible = ref(false)
-const jobForm = ref({ title: '', department: '', salary: '', headcount: 2 })
+// 发布表单入参对齐新契约：jobTitle / minSalary / maxSalary / status / requirements
+const jobForm = ref({ jobTitle: '', department: '', minSalary: 3000, maxSalary: 6000, headcount: 2, status: 1, requirements: '' })
 const submitJobPublish = () => {
-  if (!jobForm.value.title) return ElMessage.warning('请填写职位名称')
-  hrJobList.value.unshift({ id: Date.now(), title: jobForm.value.title, department: jobForm.value.department || '通用', salary: jobForm.value.salary || '面议', headcount: jobForm.value.headcount, applyCount: 0, status: 'active' })
+  if (!jobForm.value.jobTitle) return ElMessage.warning('请填写职位名称')
+  if (jobForm.value.minSalary > jobForm.value.maxSalary) return ElMessage.warning('最低薪资不能高于最高薪资')
+  hrJobList.value.unshift({
+    id: Date.now(),
+    jobTitle: jobForm.value.jobTitle,
+    department: jobForm.value.department || '通用',
+    minSalary: jobForm.value.minSalary,
+    maxSalary: jobForm.value.maxSalary,
+    headcount: jobForm.value.headcount,
+    applyCount: 0,
+    status: jobForm.value.status
+  })
   publishVisible.value = false
   ElMessage.success('岗位已提交学院审核，审核通过后即可对学生开放')
 }
-const toggleJobStatus = (row: any) => { row.status = row.status === 'active' ? 'paused' : 'active'; ElMessage.info('岗位状态已更新') }
+const toggleJobStatus = (row: any) => { row.status = row.status === 1 ? 0 : 1; ElMessage.info('岗位状态已更新') }
 const deleteJob = (row: any) => { hrJobList.value = hrJobList.value.filter(j => j.id !== row.id); ElMessage.success('岗位已下线') }
 
 // 3. 学生与辅导员通用数据
 const publicJobList = ref([
-  { company: '华智未来科技', title: '前端开发实习生', salary: '180-220/天', location: '北京' },
-  { company: '腾讯科技', title: '全栈开发工程师', salary: '15k-20k', location: '深圳' }
+  { company: '华智未来科技', jobTitle: '前端开发实习生', minSalary: 4400, maxSalary: 6600, location: '北京' },
+  { company: '腾讯科技', jobTitle: '全栈开发工程师', minSalary: 15000, maxSalary: 20000, location: '深圳' }
 ])
-const pushToClass = (row: any) => ElMessage.success(`已将“${row.company} - ${row.title}”定向推送给全班！`)
-const applyJob = (row: any) => ElMessage.success(`已向 ${row.company} 投递简历！`)
+const pushToClass = (row: any) => ElMessage.success(`已将“${row.company} - ${row.jobTitle}”定向推送给全班！`)
+const applyJob = (row: any) => ElMessage.success(`已向 ${row.company} 的「${row.jobTitle}」岗位投递简历！`)
 </script>
 
 <style scoped>
@@ -201,4 +228,7 @@ const applyJob = (row: any) => ElMessage.success(`已向 ${row.company} 投递�
 .header-flex { display: flex; justify-content: space-between; align-items: center; }
 .section-title { font-size: 16px; font-weight: bold; }
 .sub-tip { font-size: 12px; color: #909399; margin-left: 10px; }
+.salary-range { display: flex; align-items: center; gap: 6px; }
+.salary-sep { color: #909399; }
+.salary-unit { color: #909399; font-size: 13px; }
 </style>

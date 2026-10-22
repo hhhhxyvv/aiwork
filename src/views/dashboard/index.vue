@@ -242,8 +242,8 @@
               <span>全院2026届就业率</span>
               <el-tag type="success">核心考核</el-tag>
             </div>
-            <div class="metric-value">84.2<span class="unit">%</span></div>
-            <el-progress :percentage="84.2" :show-text="false" status="success" />
+            <div class="metric-value">{{ stats.employmentRate }}<span class="unit">%</span></div>
+            <el-progress :percentage="stats.employmentRate" :show-text="false" status="success" />
           </el-card>
         </el-col>
         <el-col :span="6">
@@ -278,6 +278,54 @@
         </el-col>
       </el-row>
 
+      <!-- 就业数据大屏统计（真实接口 GET /api/stat/dashboard：就业率 / 行业分布 / 薪资聚合） -->
+      <el-card shadow="never" class="content-card stats-card">
+        <template #header>
+          <div class="card-header">
+            <span>全院就业数据统计</span>
+            <el-tag type="success">实时聚合</el-tag>
+          </div>
+        </template>
+        <el-row :gutter="20">
+          <el-col :span="7">
+            <div class="stat-block">
+              <div class="stat-title">毕业生去向</div>
+              <div class="stat-line">毕业生 <b>{{ stats.totalGraduates }}</b> 人 · 已落实 <b>{{ stats.employedCount }}</b> 人</div>
+              <el-progress :percentage="stats.employmentRate" status="success" />
+            </div>
+          </el-col>
+          <el-col :span="9">
+            <div class="stat-block">
+              <div class="stat-title">行业分布</div>
+              <div class="industry-tags">
+                <el-tag v-for="item in stats.industryDistribution" :key="item.name" size="small" class="industry-tag">
+                  {{ item.name }} · {{ item.value }} 人
+                </el-tag>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="stat-block">
+              <div class="stat-title">薪资聚合（元/月）</div>
+              <div class="salary-stats">
+                <div class="salary-item">
+                  <span class="num">{{ stats.salaryStats.avgSalary }}</span>
+                  <span class="lbl">平均薪资</span>
+                </div>
+                <div class="salary-item">
+                  <span class="num">{{ stats.salaryStats.maxSalary }}</span>
+                  <span class="lbl">最高薪资</span>
+                </div>
+                <div class="salary-item">
+                  <span class="num">{{ stats.salaryStats.minSalary }}</span>
+                  <span class="lbl">最低薪资</span>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </el-card>
+
       <el-card shadow="never" class="content-card">
         <template #header>
           <div class="card-header">
@@ -306,8 +354,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getDashboardStats } from '@/api/stat'
+import type { DashboardStats } from '@/api/types'
 
 const currentRole = ref(localStorage.getItem('role') || 'student')
 const username = ref(localStorage.getItem('username') || '用户')
@@ -375,6 +425,30 @@ const adminMajorStats = ref([
   { major: '人工智能', totalStudents: 65, employedCount: 56, rate: 86.1, internshipDone: 92 },
   { major: '信息安全', totalStudents: 60, employedCount: 45, rate: 75.0, internshipDone: 88 }
 ])
+
+// ================= 就业数据大屏统计（GET /api/stat/dashboard） =================
+// 默认值即本地兜底数据，接口成功后自动替换为真实统计
+const stats = ref<DashboardStats>({
+  employmentRate: 84.2,
+  totalGraduates: 355,
+  employedCount: 301,
+  industryDistribution: [
+    { name: '互联网/软件', value: 128 },
+    { name: '智能制造', value: 54 },
+    { name: '金融服务', value: 47 },
+    { name: '教育科研', value: 38 },
+    { name: '其他行业', value: 34 }
+  ],
+  salaryStats: { avgSalary: 8600, maxSalary: 25000, minSalary: 4500 }
+})
+
+onMounted(async () => {
+  try {
+    stats.value = await getDashboardStats()
+  } catch {
+    // 请求拦截器已统一弹错，此处保留本地兜底数据，页面不空白
+  }
+})
 </script>
 
 <style scoped>
@@ -461,5 +535,52 @@ const adminMajorStats = ref([
   align-items: center;
   font-weight: 600;
   color: #2c3e50;
+}
+.stats-card {
+  margin-bottom: 24px;
+}
+.stat-block {
+  padding: 4px 2px;
+}
+.stat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 10px;
+}
+.stat-line {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+.stat-line b {
+  color: #2c3e50;
+}
+.industry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.industry-tag {
+  border-radius: 6px;
+}
+.salary-stats {
+  display: flex;
+  justify-content: space-between;
+}
+.salary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.salary-item .num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+.salary-item .lbl {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

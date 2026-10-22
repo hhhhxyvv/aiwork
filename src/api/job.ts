@@ -1,16 +1,17 @@
 import request from '@/utils/request'
 import { mockOrReal } from './_mock'
-import type { Job, JobQuery, ApplyParams } from './types'
+import type { JobItem, JobQuery, JobPublishParams, ApplyParams } from './types'
 
-/** Mock 岗位数据 */
-const mockJobs: Job[] = [
+/** Mock 岗位数据（新契约：jobTitle + minSalary/maxSalary 元/月 + status） */
+const mockJobs: JobItem[] = [
   {
     id: 1,
-    name: '前端开发工程师',
+    jobTitle: '前端开发工程师',
     company: '字节跳动',
-    salary: '20K-35K',
-    salaryMin: 20,
-    salaryMax: 35,
+    minSalary: 20000,
+    maxSalary: 35000,
+    status: 1,
+    requirements: '熟悉 Vue3/TypeScript，有性能优化经验优先',
     location: '北京',
     skills: ['Vue3', 'TypeScript', 'Webpack', '性能优化'],
     matchScore: 93,
@@ -19,11 +20,12 @@ const mockJobs: Job[] = [
   },
   {
     id: 2,
-    name: 'Java 后端开发',
+    jobTitle: 'Java 后端开发',
     company: '阿里巴巴',
-    salary: '18K-30K',
-    salaryMin: 18,
-    salaryMax: 30,
+    minSalary: 18000,
+    maxSalary: 30000,
+    status: 1,
+    requirements: '熟悉 Spring Boot/MySQL/Redis，有分布式项目经验优先',
     location: '杭州',
     skills: ['Java', 'Spring Boot', 'MySQL', 'Redis'],
     matchScore: 87,
@@ -32,11 +34,11 @@ const mockJobs: Job[] = [
   },
   {
     id: 3,
-    name: '数据分析师',
+    jobTitle: '数据分析师',
     company: '腾讯',
-    salary: '15K-25K',
-    salaryMin: 15,
-    salaryMax: 25,
+    minSalary: 15000,
+    maxSalary: 25000,
+    status: 1,
     location: '深圳',
     skills: ['Python', 'SQL', '数据可视化', '统计学'],
     matchScore: 78,
@@ -45,11 +47,11 @@ const mockJobs: Job[] = [
   },
   {
     id: 4,
-    name: 'UI/UX 设计师',
+    jobTitle: 'UI/UX 设计师',
     company: '网易',
-    salary: '12K-20K',
-    salaryMin: 12,
-    salaryMax: 20,
+    minSalary: 12000,
+    maxSalary: 20000,
+    status: 1,
     location: '广州',
     skills: ['Figma', 'Sketch', '交互设计', '用户研究'],
     matchScore: 82,
@@ -58,11 +60,11 @@ const mockJobs: Job[] = [
   },
   {
     id: 5,
-    name: 'AI 算法工程师',
+    jobTitle: 'AI 算法工程师',
     company: '百度',
-    salary: '25K-45K',
-    salaryMin: 25,
-    salaryMax: 45,
+    minSalary: 25000,
+    maxSalary: 45000,
+    status: 1,
     location: '北京',
     skills: ['Python', 'PyTorch', 'NLP', '深度学习'],
     matchScore: 71,
@@ -71,11 +73,11 @@ const mockJobs: Job[] = [
   },
   {
     id: 6,
-    name: '产品经理',
+    jobTitle: '产品经理',
     company: '美团',
-    salary: '16K-28K',
-    salaryMin: 16,
-    salaryMax: 28,
+    minSalary: 16000,
+    maxSalary: 28000,
+    status: 0,
     location: '上海',
     skills: ['需求分析', 'Axure', '数据驱动', '项目管理'],
     matchScore: 65,
@@ -88,25 +90,28 @@ const mockJobs: Job[] = [
 let jobStore = [...mockJobs]
 
 /**
- * 获取岗位列表
+ * 获取岗位列表（可根据 status 数字状态筛选）
  * 真实后端: GET /api/jobs
  */
 export function getJobList(query?: JobQuery) {
-  return mockOrReal<Job[]>(
+  return mockOrReal<JobItem[]>(
     () => {
       let list = [...jobStore]
       if (query?.keyword) {
         const kw = query.keyword.toLowerCase()
         list = list.filter(
           (j) =>
-            j.name.toLowerCase().includes(kw) ||
+            j.jobTitle.toLowerCase().includes(kw) ||
             j.company.toLowerCase().includes(kw) ||
             j.skills.some((s) => s.toLowerCase().includes(kw))
         )
       }
       if (query?.salaryRange) {
         const [min, max] = query.salaryRange.split('-').map(Number)
-        list = list.filter((j) => j.salaryMin >= min && j.salaryMax <= max)
+        list = list.filter((j) => j.minSalary >= min && j.maxSalary <= max)
+      }
+      if (query?.status !== undefined) {
+        list = list.filter((j) => j.status === query.status)
       }
       if (query?.sortBy === 'match') {
         list.sort((a, b) => b.matchScore - a.matchScore)
@@ -122,9 +127,36 @@ export function getJobList(query?: JobQuery) {
  * 真实后端: GET /api/jobs/recommend
  */
 export function getRecommendJobs() {
-  return mockOrReal<Job[]>(
+  return mockOrReal<JobItem[]>(
     () => [...jobStore].sort((a, b) => b.matchScore - a.matchScore).slice(0, 3),
     () => request.get('/jobs/recommend')
+  )
+}
+
+/**
+ * HR 发布新岗位（新契约入参：jobTitle / minSalary / maxSalary / status / requirements）
+ * 真实后端: POST /api/jobs
+ */
+export function publishJob(params: JobPublishParams) {
+  return mockOrReal<boolean>(
+    () => {
+      jobStore.unshift({
+        id: Date.now(),
+        jobTitle: params.jobTitle,
+        company: '本企业',
+        minSalary: params.minSalary,
+        maxSalary: params.maxSalary,
+        status: params.status,
+        requirements: params.requirements,
+        location: '待定',
+        skills: [],
+        matchScore: 0,
+        matchReason: '',
+        applied: false
+      })
+      return true
+    },
+    () => request.post('/jobs', params)
   )
 }
 
@@ -148,7 +180,7 @@ export function applyJob(params: ApplyParams) {
  * 真实后端: GET /api/jobs/my-applications
  */
 export function getMyApplications() {
-  return mockOrReal<Job[]>(
+  return mockOrReal<JobItem[]>(
     () => jobStore.filter((j) => j.applied),
     () => request.get('/jobs/my-applications')
   )

@@ -17,9 +17,10 @@ export function login(params: LoginParams) {
         id: 1,
         username: params.username,
         name: params.username,
-        realName: '测试同学',
         role: params.role,
-        avatar: ''
+        avatar: '',
+        department: '信息工程学院',
+        className: '软件2101班'
       }
     }),
     // 真实后端请求
@@ -43,9 +44,10 @@ export function login(params: LoginParams) {
           id: res.userInfo?.id || 1,
           username: res.userInfo?.name || res.userInfo?.username || params.username,
           name: realName,
-          realName: realName,
           role: role,
-          deptId: res.userInfo?.deptId,
+          // 新契约：院系与班级为字符串字段，替代原 deptId
+          department: res.userInfo?.department || '',
+          className: res.userInfo?.className || '',
           avatar: res.userInfo?.avatar || ''
         }
       }
@@ -76,7 +78,9 @@ export function getCurrentUser() {
       name: localStorage.getItem('realName') || localStorage.getItem('username') || '同学',
       realName: localStorage.getItem('realName') || '同学',
       role: (localStorage.getItem('role') as any) || 'student',
-      avatar: ''
+      avatar: '',
+      department: localStorage.getItem('department') || '',
+      className: localStorage.getItem('className') || ''
     }),
     async () => {
       try {
@@ -90,7 +94,9 @@ export function getCurrentUser() {
           name: localStorage.getItem('realName') || localStorage.getItem('username') || '同学',
           realName: localStorage.getItem('realName') || '同学',
           role: (localStorage.getItem('role') as any) || 'student',
-          avatar: ''
+          avatar: '',
+          department: localStorage.getItem('department') || '',
+          className: localStorage.getItem('className') || ''
         }
       }
     }

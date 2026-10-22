@@ -16,6 +16,8 @@
         <span class="user-info">
           <el-avatar :size="32" :icon="UserFilled" />
           <span class="username">{{ username }}</span>
+          <!-- 院系/班级展示（对齐新契约 userInfo.department / userInfo.className） -->
+          <el-tag v-if="deptClass" size="small" type="info" effect="plain" class="dept-tag">{{ deptClass }}</el-tag>
           <el-icon><ArrowDown /></el-icon>
         </span>
         <template #dropdown>
@@ -40,6 +42,11 @@ const router = useRouter()
 
 // 从 localStorage 读取用户名
 const username = computed(() => localStorage.getItem('username') || '用户')
+
+// 院系与班级（新契约：department/className 替代原 deptId，为空时不展示）
+const department = computed(() => localStorage.getItem('department') || '')
+const className = computed(() => localStorage.getItem('className') || '')
+const deptClass = computed(() => [department.value, className.value].filter(Boolean).join(' · '))
 
 // 侧边栏折叠状态（与 Sidebar 共享，简单起见用自定义事件或 store；这里通过事件总线简易实现）
 const isCollapse = computed(() => false)
@@ -102,5 +109,9 @@ const handleCommand = async (command: string) => {
 
 .username {
   font-size: 14px;
+}
+
+.dept-tag {
+  font-weight: normal;
 }
 </style>

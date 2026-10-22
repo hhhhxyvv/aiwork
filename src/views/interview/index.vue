@@ -161,13 +161,44 @@
           </div>
         </div>
       </div>
+
+      <!-- AI 五维评分报告看板（新契约：roundScore / logicScore / completenessScore / expressionScore / realtimeFeedback） -->
+      <el-dialog v-model="reportVisible" title="AI 模拟面试评估报告" width="620px" :close-on-click-modal="false">
+        <div class="report-grid">
+          <div class="score-card main">
+            <div class="score-num">{{ report.roundScore }}</div>
+            <div class="score-label">综合得分</div>
+          </div>
+          <div class="score-card">
+            <div class="score-num">{{ report.logicScore }}</div>
+            <div class="score-label">逻辑思维</div>
+          </div>
+          <div class="score-card">
+            <div class="score-num">{{ report.completenessScore }}</div>
+            <div class="score-label">作答完整度</div>
+          </div>
+          <div class="score-card">
+            <div class="score-num">{{ report.expressionScore }}</div>
+            <div class="score-label">语言表达</div>
+          </div>
+        </div>
+        <div class="feedback-box">
+          <div class="feedback-title">AI 详细评语</div>
+          <div class="feedback-text">{{ report.realtimeFeedback }}</div>
+        </div>
+        <template #footer>
+          <el-button type="primary" @click="reportVisible = false">完成并退出</el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { finishInterview } from '@/api/interview'
+import type { InterviewRecord } from '@/api/types'
 
 const role = ref(localStorage.getItem('role') || 'student')
 
@@ -280,14 +311,39 @@ const nextQuestion = () => {
     speakQuestion(currentQuestion.value)
     ElMessage.info(`进入第 ${currentQuestionIndex.value + 1} 题`)
   } else {
-    // 面试完毕
-    stopInterview()
-    ElMessageBox.alert(
-      '面试已顺利结束！AI 综合面评分：88分（表达逻辑：90、技术深度：85、临场应对：89）。答题切片与报告已保存至后端 mock_interview_record 表！',
-      'AI 模拟面试评估完成',
-      { confirmButtonText: '确定' }
-    )
+    // 面试完毕，提交并展示五维评分报告
+    finishReport()
   }
+}
+
+// ================= AI 五维评分报告（新契约） =================
+const reportVisible = ref(false)
+const report = ref<InterviewRecord>({
+  logicScore: 0,
+  completenessScore: 0,
+  expressionScore: 0,
+  roundScore: 0,
+  realtimeFeedback: ''
+})
+
+const finishReport = async () => {
+  stopInterview()
+  try {
+    // 后端返回五维数据：roundScore / logicScore / completenessScore / expressionScore / realtimeFeedback
+    report.value = await finishInterview()
+  } catch {
+    // 后端暂不可用时降级为本地模拟评分，保证面试流程可走通（拦截器已弹网络错误提示）
+    const rand = () => Math.floor(70 + Math.random() * 28)
+    report.value = {
+      logicScore: rand(),
+      completenessScore: rand(),
+      expressionScore: rand(),
+      roundScore: rand(),
+      realtimeFeedback:
+        '整体作答较为流畅，逻辑框架基本清晰，建议结合 STAR 法则补充量化成果，并注意控制语速与停顿。（本地模拟数据）'
+    }
+  }
+  reportVisible.value = true
 }
 
 // 退出并关闭摄像头硬件
@@ -398,4 +454,15 @@ onBeforeUnmount(() => {
 .sub-label { color: #409eff; font-size: 12px; margin-bottom: 4px; }
 .sub-text { font-size: 15px; font-weight: bold; }
 .ctrl-btns { display: flex; gap: 20px; }
+
+/* AI 五维评分报告看板 */
+.report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.score-card { padding: 18px 8px; text-align: center; background: #f5f7fa; border-radius: 10px; }
+.score-card.main { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: #fff; }
+.score-num { font-size: 34px; font-weight: 700; line-height: 1.2; }
+.score-label { margin-top: 6px; font-size: 13px; color: #909399; }
+.score-card.main .score-label { color: rgba(255, 255, 255, 0.85); }
+.feedback-box { margin-top: 16px; padding: 14px 16px; background: #f5f7fa; border-radius: 10px; }
+.feedback-title { font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 8px; }
+.feedback-text { font-size: 13px; line-height: 1.8; color: #606266; }
 </style>

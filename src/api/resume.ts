@@ -1,21 +1,61 @@
 import request from '@/utils/request'
 import { mockOrReal } from './_mock'
-import type { ResumeForm, DiagnosisResult } from './types'
+import type { ResumeVO, ResumeDTO, ResumeQuery, DiagnosisResult } from './types'
+
+/** Mock 简历库（带班级维度，供辅导员筛选演示） */
+interface MockResumeRow extends ResumeVO {
+  className: string
+  studentName: string
+}
+
+const mockResumeStore: MockResumeRow[] = [
+  {
+    id: 1,
+    studentName: '张同学',
+    className: '软件2101班',
+    title: '张同学-前端开发求职简历',
+    parsedContent:
+      '【教育经历】软件工程 本科 2022-2026\n【项目经历】AI 就业服务智能体：负责前端架构与核心模块开发\n【技能特长】Vue3 / TypeScript / Element Plus',
+    templateCode: 'classic',
+    integrityScore: 88,
+    sourceType: 2
+  },
+  {
+    id: 2,
+    studentName: '李同学',
+    className: '软件2101班',
+    title: '李同学-Java开发求职简历',
+    parsedContent: '【教育经历】计算机科学 本科 2022-2026\n【项目经历】校园二手交易平台：后端接口设计与开发\n【技能特长】Java / Spring Boot / MySQL',
+    templateCode: 'modern',
+    integrityScore: 76,
+    sourceType: 1
+  },
+  {
+    id: 3,
+    studentName: '王同学',
+    className: '软件2102班',
+    title: '王同学-数据分析求职简历',
+    parsedContent: '【教育经历】大数据管理 本科 2022-2026\n【项目经历】就业数据可视化看板：负责数据清洗与图表呈现\n【技能特长】Python / SQL / ECharts',
+    templateCode: 'classic',
+    integrityScore: 64,
+    sourceType: 1
+  }
+]
 
 /**
- * 上传简历并解析
+ * 上传简历并解析（后端解析后返回 ResumeVO，内容统一在 parsedContent 中）
  * 真实后端: POST /api/resume/upload（FormData）
  */
 export function uploadResume(file: File) {
-  return mockOrReal<ResumeForm>(
+  return mockOrReal<ResumeVO>(
     () => ({
-      name: '张同学',
-      target: '前端开发工程师',
-      skills: ['Vue3', 'TypeScript', 'Webpack', 'Git'],
-      projects: [
-        { name: 'AI 就业服务智能体', desc: '基于 Vue3 + TypeScript + Element Plus 开发，负责前端架构与核心模块' },
-        { name: '企业官网重构', desc: '使用 React + Next.js 重构，性能提升 40%，Lighthouse 评分 95+' }
-      ]
+      id: 1,
+      title: '张同学-前端开发求职简历',
+      parsedContent:
+        '【教育经历】软件工程 本科 2022-2026\n【项目经历】企业官网重构：性能提升 40%\n【技能特长】Vue3 / TypeScript / Git',
+      templateCode: 'classic',
+      integrityScore: 72,
+      sourceType: 1
     }),
     () => {
       const formData = new FormData()
@@ -26,61 +66,49 @@ export function uploadResume(file: File) {
 }
 
 /**
- * 更新简历
- * 真实后端: PUT /api/resume
+ * 按班级查询学生简历建档列表（新契约：班级维度传字符串 className，不再传数字 classId）
+ * 真实后端: GET /api/resume/list?className=xxx
  */
-export function updateResume(form: ResumeForm) {
-  return mockOrReal<boolean>(
-    () => true,
-    () => request.put('/resume', form)
+export function getResumeList(params?: ResumeQuery) {
+  return mockOrReal<ResumeVO[]>(
+    () => {
+      let list = [...mockResumeStore]
+      if (params?.className) {
+        list = list.filter((r) => r.className === params.className)
+      }
+      return list
+    },
+    () => request.get('/resume/list', { params })
   )
 }
 
 /**
- * AI 简历诊断
+ * 更新（保存）简历
+ * 真实后端: PUT /api/resume
+ */
+export function updateResume(dto: ResumeDTO) {
+  return mockOrReal<boolean>(
+    () => true,
+    () => request.put('/resume', dto)
+  )
+}
+
+/**
+ * AI 简历诊断（新契约响应：reportId / targetJobName / overallScore / strengths / shortcomings / suggestions）
  * 真实后端: POST /api/resume/diagnose
  */
-export function diagnoseResume(targetJob: string) {
+export function diagnoseResume(targetJobName: string) {
   return mockOrReal<DiagnosisResult>(
-    () => {
-      const mockMap: Record<string, DiagnosisResult> = {
-        frontend: {
-          score: 82,
-          radar: {
-            indicators: ['技术栈', '项目经验', '工程化', '算法基础', '软实力', '学历背景'],
-            values: [85, 78, 80, 65, 88, 75]
-          },
-          strengths: [
-            'Vue3 + TypeScript 技术栈匹配度高，掌握核心 API 与组合式 API',
-            '具备完整的企业级项目经验，能独立负责模块开发',
-            '工程化能力较好，熟悉 Webpack/Vite 构建工具与 Git 协作流程',
-            '沟通表达清晰，团队协作能力强'
-          ],
-          weaknesses: [
-            '算法与数据结构基础相对薄弱，大厂笔试可能受限',
-            '缺少性能优化的实际案例，简历中未体现',
-            '没有开源项目或技术博客，技术影响力不足'
-          ],
-          suggestions: [
-            '补充 2-3 个算法题到简历「个人能力」栏，标注 LeetCode 刷题数量',
-            '在项目描述中加入性能量化指标（如首屏加载从 3s 优化至 1.2s）',
-            '针对目标岗位定向学习：React 生态、微前端架构、Node.js 服务端',
-            '整理 1-2 篇技术博客或开源项目，放在简历末尾提升竞争力'
-          ]
-        },
-        backend: {
-          score: 71,
-          radar: {
-            indicators: ['技术栈', '项目经验', '系统设计', '数据库', '算法', '软实力'],
-            values: [60, 55, 50, 72, 58, 80]
-          },
-          strengths: ['数据库基础扎实，熟悉 MySQL 索引优化与事务', '学习能力强，能快速上手新技术', '沟通协作能力较好'],
-          weaknesses: ['Java/Spring Boot 相关经验不足，缺少后端项目', '系统设计与分布式概念薄弱', '算法能力有待加强'],
-          suggestions: ['系统学习 Spring Boot + MyBatis，完成 1 个完整后端项目', '补充 Redis、消息队列、微服务等中间件知识', '刷题至 LeetCode Hot 100']
-        }
-      }
-      return mockMap[targetJob] || mockMap.frontend
-    },
-    () => request.post('/resume/diagnose', { targetJob })
+    () => ({
+      reportId: Date.now(),
+      targetJobName,
+      overallScore: 82,
+      strengths:
+        'Vue3 + TypeScript 技术栈匹配度高，掌握组合式 API\n具备完整的企业级项目经验，能独立负责模块开发\n工程化能力较好，熟悉 Vite 构建与 Git 协作流程',
+      shortcomings: '算法与数据结构基础相对薄弱，笔试可能受限\n缺少性能优化的量化案例，简历中未体现\n没有开源项目或技术博客，技术影响力不足',
+      suggestions:
+        '补充 2-3 个算法题成果，标注 LeetCode 刷题数量\n在项目描述中加入性能量化指标（如首屏加载从 3s 优化至 1.2s）\n整理 1-2 篇技术博客或开源项目，放在简历末尾提升竞争力'
+    }),
+    () => request.post('/resume/diagnose', { targetJobName })
   )
 }

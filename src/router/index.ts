@@ -97,6 +97,18 @@ export const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           roles: ['admin'] // 仅院系管理员可见与访问
         }
+      },
+      // ====== 新增：大数据存储中心（本地磁盘 / 数据库BLOB / 云OSS 演示，仅管理员可见） ======
+      {
+        path: 'storage',
+        name: 'StorageManagement',
+        component: () => import('@/views/storage/index.vue'),
+        meta: {
+          title: '大数据存储中心',
+          icon: 'FolderOpened',
+          requiresAuth: true,
+          roles: ['admin'] // 仅院系管理员可见与访问
+        }
       }
     ]
   },

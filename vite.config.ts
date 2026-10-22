@@ -15,9 +15,9 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8888',
         changeOrigin: true
-        // 注意：这里坚决不要加 rewrite，原样把 /api 传递给后端 Spring Boot
+        // 注意：这里坚决不要加 rewrite，原样把 /api 传递给后端（8888 为 Nginx 负载均衡网关，转发至 8081/8082 Tomcat 集群）
       }
     }
   }

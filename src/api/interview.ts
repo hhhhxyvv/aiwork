@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import { mockOrReal } from './_mock'
-import type { InterviewQuestion, InterviewFeedback } from './types'
+import type { InterviewQuestion, InterviewRecord } from './types'
 
 /** Mock 题库 */
 const questionBank: Record<string, InterviewQuestion[]> = {
@@ -44,23 +44,44 @@ export function getQuestions(scene: string) {
   )
 }
 
+/** 最近一次作答长度（用于本地模拟评分基准） */
+let lastAnswerLength = 60
+
+/** 生成本地模拟的五维评分 */
+const mockRecord = (): InterviewRecord => {
+  const base = Math.min(95, 50 + Math.floor(lastAnswerLength / 10))
+  const rand = () => Math.min(98, base + Math.floor(Math.random() * 8))
+  return {
+    logicScore: rand(),
+    completenessScore: rand(),
+    expressionScore: rand(),
+    roundScore: rand(),
+    realtimeFeedback: comments[Math.floor(Math.random() * comments.length)]
+  }
+}
+
 /**
- * 提交回答并获取 AI 评分
+ * 提交回答并获取 AI 五维评分
  * 真实后端: POST /api/interview/score
  */
 export function scoreAnswer(answer: string) {
-  return mockOrReal<InterviewFeedback>(
-    () => {
-      const len = answer.length
-      const base = Math.min(95, 50 + Math.floor(len / 10))
-      const rand = () => Math.min(98, base + Math.floor(Math.random() * 8))
-      return {
-        logic: rand(),
-        completeness: rand(),
-        expression: rand(),
-        comment: comments[Math.floor(Math.random() * comments.length)]
-      }
-    },
+  lastAnswerLength = answer.length
+  return mockOrReal<InterviewRecord>(
+    () => mockRecord(),
     () => request.post('/interview/score', { answer })
+  )
+}
+
+/**
+ * 结束面试，获取整场面试的五维评估报告
+ * 真实后端: POST /api/interview/finish
+ */
+export function finishInterview() {
+  return mockOrReal<InterviewRecord>(
+    () => {
+      lastAnswerLength = 80
+      return mockRecord()
+    },
+    () => request.post('/interview/finish')
   )
 }
