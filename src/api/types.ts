@@ -36,12 +36,20 @@ export interface LoginParams {
   username: string
   password: string
   role: UserRole
+  /** 图形验证码 key（GET /auth/captcha 返回） */
+  captchaKey?: string
+  /** 用户输入的图形验证码 */
+  captchaCode?: string
 }
 
 export interface LoginResult {
   token: string
   role: UserRole
   userInfo: UserInfo
+  /** 后端 RBAC：角色编码数组（后端暂未同步时可能缺省） */
+  roles?: string[]
+  /** 后端 RBAC：权限点编码数组（后端暂未同步时可能缺省） */
+  permissions?: string[]
 }
 
 // ============ 岗位相关 ============
@@ -124,6 +132,8 @@ export interface ResumeVO {
   integrityScore: number
   /** 简历来源：1-文件上传解析 2-在线编辑 */
   sourceType?: number
+  /** 上传的简历原件在服务端的存储路径（未上传附件时为空） */
+  fileUrl?: string
 }
 
 /** 简历保存/更新入参 DTO */

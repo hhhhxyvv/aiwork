@@ -241,7 +241,7 @@ const handleUpload = async (options: UploadRequestOptions) => {
 }
 .upload-icon {
   font-size: 40px;
-  color: #409eff;
+  color: #4dabf7;
   margin-bottom: 6px;
 }
 .upload-text {
@@ -249,7 +249,7 @@ const handleUpload = async (options: UploadRequestOptions) => {
   color: #606266;
 }
 .upload-text em {
-  color: #409eff;
+  color: #4dabf7;
   font-style: normal;
 }
 .upload-tip {

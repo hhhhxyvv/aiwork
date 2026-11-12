@@ -451,14 +451,14 @@ onBeforeUnmount(() => {
   text-align: center;
   max-width: 80%;
 }
-.sub-label { color: #409eff; font-size: 12px; margin-bottom: 4px; }
+.sub-label { color: #4dabf7; font-size: 12px; margin-bottom: 4px; }
 .sub-text { font-size: 15px; font-weight: bold; }
 .ctrl-btns { display: flex; gap: 20px; }
 
 /* AI 五维评分报告看板 */
 .report-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .score-card { padding: 18px 8px; text-align: center; background: #f5f7fa; border-radius: 10px; }
-.score-card.main { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: #fff; }
+.score-card.main { background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%); color: #fff; }
 .score-num { font-size: 34px; font-weight: 700; line-height: 1.2; }
 .score-label { margin-top: 6px; font-size: 13px; color: #909399; }
 .score-card.main .score-label { color: rgba(255, 255, 255, 0.85); }

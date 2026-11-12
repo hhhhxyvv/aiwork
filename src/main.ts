@@ -5,6 +5,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
+import { vPermission } from '@/utils/permission'
 
 const app = createApp(App)
 
@@ -12,6 +13,9 @@ const app = createApp(App)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
+
+// 全局注册 RBAC 权限指令：v-permission="'xxx:yyy'"
+app.directive('permission', vPermission)
 
 app.use(ElementPlus)
 app.use(router)

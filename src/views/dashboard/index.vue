@@ -235,7 +235,7 @@
 
     <!-- 4. 院系管理员视角工作台 -->
     <div v-else class="role-section">
-      <el-row :gutter="20" class="metric-row">
+      <el-row v-permission="'stat:dashboard:view'" :gutter="20" class="metric-row">
         <el-col :span="6">
           <el-card shadow="hover" class="metric-card">
             <div class="metric-header">
@@ -279,7 +279,7 @@
       </el-row>
 
       <!-- 就业数据大屏统计（真实接口 GET /api/stat/dashboard：就业率 / 行业分布 / 薪资聚合） -->
-      <el-card shadow="never" class="content-card stats-card">
+      <el-card v-permission="'stat:dashboard:view'" shadow="never" class="content-card stats-card">
         <template #header>
           <div class="card-header">
             <span>全院就业数据统计</span>
@@ -326,7 +326,7 @@
         </el-row>
       </el-card>
 
-      <el-card shadow="never" class="content-card">
+      <el-card v-permission="'stat:dashboard:view'" shadow="never" class="content-card">
         <template #header>
           <div class="card-header">
             <span>各专业就业与实习达标进度监控</span>
@@ -357,6 +357,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDashboardStats } from '@/api/stat'
+import { hasPermission } from '@/utils/permission'
 import type { DashboardStats } from '@/api/types'
 
 const currentRole = ref(localStorage.getItem('role') || 'student')
@@ -443,6 +444,9 @@ const stats = ref<DashboardStats>({
 })
 
 onMounted(async () => {
+  // 大屏接口要求 stat:dashboard:view 权限（仅管理员/辅导员授予），
+  // 学生等其他角色无权限，直接使用本地兜底数据，避免无谓的 403 请求
+  if (!hasPermission('stat:dashboard:view')) return
   try {
     stats.value = await getDashboardStats()
   } catch {
@@ -472,7 +476,7 @@ onMounted(async () => {
   gap: 16px;
 }
 .role-avatar {
-  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  background: linear-gradient(135deg, #74c0fc, #4dabf7);
   color: #fff;
   font-size: 20px;
   font-weight: 700;

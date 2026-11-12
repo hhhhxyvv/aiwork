@@ -43,8 +43,8 @@ const mockResumeStore: MockResumeRow[] = [
 ]
 
 /**
- * 上传简历并解析（后端解析后返回 ResumeVO，内容统一在 parsedContent 中）
- * 真实后端: POST /api/resume/upload（FormData）
+ * 上传简历文件并解析（后端保存原件 + 解析文本，返回 ResumeVO，内容统一在 parsedContent 中）
+ * 真实后端: POST /api/resume/upload（multipart/form-data，字段名 file）
  */
 export function uploadResume(file: File) {
   return mockOrReal<ResumeVO>(
@@ -66,6 +66,28 @@ export function uploadResume(file: File) {
 }
 
 /**
+ * 学生查询自己的简历详情（未建档时返回 null）
+ * 真实后端: GET /api/resume/detail
+ */
+export function getMyResume() {
+  return mockOrReal<ResumeVO | null>(
+    () => mockResumeStore[0],
+    () => request.get('/resume/detail')
+  )
+}
+
+/**
+ * 下载学生自己上传的简历原件（字节流）
+ * 真实后端: GET /api/resume/download
+ */
+export function downloadMyResume() {
+  return mockOrReal<Blob>(
+    () => new Blob(['mock resume'], { type: 'application/octet-stream' }),
+    () => request.get('/resume/download', { responseType: 'blob' })
+  )
+}
+
+/**
  * 按班级查询学生简历建档列表（新契约：班级维度传字符串 className，不再传数字 classId）
  * 真实后端: GET /api/resume/list?className=xxx
  */
@@ -83,13 +105,13 @@ export function getResumeList(params?: ResumeQuery) {
 }
 
 /**
- * 更新（保存）简历
- * 真实后端: PUT /api/resume
+ * 保存/更新简历
+ * 真实后端: POST /api/resume/save
  */
-export function updateResume(dto: ResumeDTO) {
+export function updateResume(dto: ResumeDTO & { sourceType?: number }) {
   return mockOrReal<boolean>(
     () => true,
-    () => request.put('/resume', dto)
+    () => request.post('/resume/save', dto)
   )
 }
 
@@ -109,6 +131,6 @@ export function diagnoseResume(targetJobName: string) {
       suggestions:
         '补充 2-3 个算法题成果，标注 LeetCode 刷题数量\n在项目描述中加入性能量化指标（如首屏加载从 3s 优化至 1.2s）\n整理 1-2 篇技术博客或开源项目，放在简历末尾提升竞争力'
     }),
-    () => request.post('/resume/diagnose', { targetJobName })
+    () => request.post('/resume/ai-evaluate', null, { params: { targetJobName } })
   )
 }

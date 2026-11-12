@@ -30,6 +30,11 @@ request.interceptors.request.use(
 // 响应拦截器：统一解包
 request.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
+    // 二进制响应（文件下载 blob）：没有 code/message 结构，直接返回 Blob 本体
+    if (response.config.responseType === 'blob') {
+      return response.data
+    }
+
     const res = response.data
 
     // code 为 200：直接返回业务核心数据
@@ -57,6 +62,9 @@ request.interceptors.response.use(
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
       window.location.href = '/login'
+    } else if (error.response && error.response.status === 403) {
+      // HTTP 403：已登录但无权限（后端 RBAC 拦截）——只提示后端返回的无权限信息，严禁跳转登录页
+      ElMessage.error(error.response.data?.message || '没有操作权限，请联系管理员')
     } else {
       ElMessage.error(error.message || '网络连接异常')
     }

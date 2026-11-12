@@ -74,7 +74,7 @@
             <span class="section-title">本企业在招校招与实习职位</span>
             <span class="sub-tip">发布新需求，查看各岗位投递与初筛进展</span>
           </div>
-          <el-button type="primary" @click="publishVisible = true">+ 发布新校招岗位</el-button>
+          <el-button v-permission="'job:post:publish'" type="primary" @click="publishVisible = true">+ 发布新校招岗位</el-button>
         </div>
 
         <el-table :data="hrJobList" stripe class="mt-4" style="width: 100%">
@@ -98,10 +98,10 @@
           </el-table-column>
           <el-table-column label="操作" width="180" align="center">
             <template #default="{ row }">
-              <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleJobStatus(row)">
+              <el-button v-permission="'job:post:audit'" link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleJobStatus(row)">
                 {{ row.status === 1 ? '暂停' : '恢复' }}
               </el-button>
-              <el-button link type="danger" @click="deleteJob(row)">下线</el-button>
+              <el-button v-permission="'job:post:audit'" link type="danger" @click="deleteJob(row)">下线</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -127,7 +127,7 @@
         </el-form>
         <template #footer>
           <el-button @click="publishVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitJobPublish">提交审核并发布</el-button>
+          <el-button v-permission="'job:post:publish'" type="primary" @click="submitJobPublish">提交审核并发布</el-button>
         </template>
       </el-dialog>
     </div>
@@ -221,7 +221,7 @@ const applyJob = (row: any) => ElMessage.success(`已向 ${row.company} 的「${
 .unit { font-size: 14px; font-weight: normal; }
 .stat-desc { font-size: 12px; color: #909399; margin-top: 6px; }
 .text-danger { color: #f56c6c; }
-.text-primary { color: #409eff; }
+.text-primary { color: #4dabf7; }
 .text-success { color: #67c23a; }
 .text-warning { color: #e6a23c; }
 .mt-4 { margin-top: 16px; }

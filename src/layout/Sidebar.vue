@@ -10,8 +10,8 @@
       :collapse="isCollapse"
       :collapse-transition="false"
       router
-      background-color="#001529"
-      text-color="#b7bdc3"
+      background-color="#eef7ff"
+      text-color="#5a7ba6"
       active-text-color="#ffffff"
     >
       <el-menu-item
@@ -60,9 +60,10 @@ const activeMenu = computed(() => route.path)
 
 <style scoped>
 .sidebar {
-  background: #001529;
+  background: #eef7ff;
   transition: width 0.3s;
   overflow: hidden;
+  border-right: 1px solid #cbe7fd;
 }
 
 .logo {
@@ -71,10 +72,10 @@ const activeMenu = computed(() => route.path)
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #fff;
+  color: #1971c2;
   font-size: 18px;
   font-weight: 700;
-  background: #002140;
+  background: linear-gradient(135deg, #ddf0fe 0%, #cbe7fd 100%);
   letter-spacing: 1px;
 }
 
@@ -88,5 +89,22 @@ const activeMenu = computed(() => route.path)
 
 .el-menu {
   border-right: none;
+}
+
+:deep(.el-menu-item) {
+  margin: 4px 10px;
+  border-radius: 8px;
+  height: 46px;
+}
+
+:deep(.el-menu-item:hover) {
+  background: #ddf0fe;
+  color: #1971c2;
+}
+
+:deep(.el-menu-item.is-active) {
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
+  color: #ffffff !important;
+  box-shadow: 0 3px 8px rgba(77, 171, 247, 0.35);
 }
 </style>

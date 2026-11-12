@@ -7,7 +7,7 @@
       </div>
       <div class="header-actions">
         <!-- 学生才显示申报按钮 -->
-        <el-button v-if="currentRole === 'student'" type="primary" @click="applyDialogVisible = true">
+        <el-button v-if="currentRole === 'student'" v-permission="'internship:apply:submit'" type="primary" @click="applyDialogVisible = true">
           <el-icon><Plus /></el-icon> 提交新的实习申请
         </el-button>
         <!-- 角色标签 -->
@@ -40,8 +40,8 @@
               </el-table-column>
               <el-table-column label="多级审批操作" width="220" fixed="right">
                 <template #default="{ row }">
-                  <el-button type="success" size="small" @click="handlePassNode(row)">通过节点</el-button>
-                  <el-button type="danger" size="small" plain @click="handleRejectNode(row)">节点回退</el-button>
+                  <el-button v-permission="'internship:apply:audit'" type="success" size="small" @click="handlePassNode(row)">通过节点</el-button>
+                  <el-button v-permission="'internship:apply:audit'" type="danger" size="small" plain @click="handleRejectNode(row)">节点回退</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -143,7 +143,7 @@
           <template #header>
             <div class="panel-header">
               <span>实习综合评分汇总（学生自评 20% + 企业评价 50% + 学院评定 30%）</span>
-              <el-button v-if="currentRole === 'hr'" type="warning" size="small" @click="scoreDialogVisible = true">
+              <el-button v-if="currentRole === 'hr'" v-permission="'internship:evaluate:submit'" type="warning" size="small" @click="scoreDialogVisible = true">
                 企业导师评分入口
               </el-button>
             </div>
@@ -180,8 +180,8 @@
         <el-form-item label="实习周期"><el-date-picker type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束" /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="applyDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleApplySubmit">确认提交审批</el-button>
+        <el-button v-permission="'internship:apply:submit'" @click="applyDialogVisible = false">取消</el-button>
+        <el-button v-permission="'internship:apply:submit'" type="primary" @click="handleApplySubmit">确认提交审批</el-button>
       </template>
     </el-dialog>
 

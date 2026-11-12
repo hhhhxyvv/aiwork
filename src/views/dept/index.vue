@@ -46,6 +46,7 @@
 
           <!-- Element Plus 树形组件 -->
           <div class="tree-wrapper">
+            <!-- ui渲染 -->
             <el-tree
               ref="treeRef"
               :data="treeData"
@@ -235,7 +236,7 @@ const flatList = ref<DeptNode[]>([
   { id: 10, parentId: 9, deptName: '智能制造工程', orderNum: 1, status: 1, level: 2, studentCount: 410, employmentRate: '96.2%', counselor: '钱老师（辅导员）', description: '工业互联网、数控系统与工业机器人应用。' },
   { id: 11, parentId: 9, deptName: '电气工程及其自动化', orderNum: 2, status: 1, level: 2, studentCount: 450, employmentRate: '92.0%', counselor: '郑老师（辅导员）', description: '聚焦国家电网、新能源电力与嵌入式控制系统。' }
 ])
-
+//树形结构转换
 function listToTree(list: DeptNode[]): DeptNode[] {
   const map = new Map<number, DeptNode>()
   const roots: DeptNode[] = []
@@ -274,16 +275,16 @@ const defaultProps = {
 }
 
 const treeData = computed(() => listToTree(flatList.value))
-
+// 监听搜索框输入，调用 el-tree 的过滤函数
 watch(filterText, (val) => {
   treeRef.value?.filter(val)
 })
-
+// 过滤算法：判断节点名称是否包含输入字符
 const filterNode = (value: string, data: DeptNode) => {
   if (!value) return true
   return data.deptName.includes(value)
 }
-
+// 点击树节点时触发，更新当前选中对象
 const handleNodeClick = (data: DeptNode) => {
   selectedNode.value = data
 }

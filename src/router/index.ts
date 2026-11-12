@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
+import { hasPermission } from '@/utils/permission'
 
 // 路由记录
 export const routes: RouteRecordRaw[] = [
@@ -14,6 +15,12 @@ export const routes: RouteRecordRaw[] = [
     name: 'Register',
     component: () => import('@/views/auth/Register.vue'),
     meta: { title: '注册', requiresAuth: false }
+  },
+  {
+    path: '/file-demo',
+    name: 'FileDemo',
+    component: () => import('@/views/FileDemoView.vue'),
+    meta: { title: '文件传输演示', requiresAuth: true }
   },
   {
     path: '/',
@@ -109,6 +116,18 @@ export const routes: RouteRecordRaw[] = [
           requiresAuth: true,
           roles: ['admin'] // 仅院系管理员可见与访问
         }
+      },
+      // ====== 新增：角色权限配置（RBAC 动态授权，仅管理员可见） ======
+      {
+        path: 'role',
+        name: 'RolePermission',
+        component: () => import('@/views/role/index.vue'),
+        meta: {
+          title: '角色权限配置',
+          icon: 'Key',
+          requiresAuth: true,
+          roles: ['admin'] // 仅院系管理员可见与访问
+        }
       }
     ]
   },
@@ -155,6 +174,12 @@ router.beforeEach((to) => {
   const allowedRoles = (to.meta.roles as string[]) || []
   if (to.meta.requiresAuth && allowedRoles.length > 0 && !allowedRoles.includes(currentRole)) {
     return { path: '/dashboard' } // 没权限就踢回首页概览
+  }
+
+  // 4. 权限点拦截（后端 RBAC：路由声明了 meta.permission 时必须通过权限校验）
+  const requiredPerm = to.meta.permission as string | undefined
+  if (to.meta.requiresAuth && requiredPerm && !hasPermission(requiredPerm)) {
+    return { path: '/dashboard' }
   }
 })
 

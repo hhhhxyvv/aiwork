@@ -97,6 +97,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { register } from '@/api/auth'
 import {
   User,
   Lock,
@@ -184,10 +185,15 @@ const handleRegister = async () => {
     if (!valid) return
     loading.value = true
     try {
-      // 模拟注册写入，联调时替换为真实的 POST /api/auth/register
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      // 调用真实后端注册（RegisterDTO 仅接收 username/password/role_code 三个字段，
+      // 学号/院系等扩展信息由后端学生画像模块维护，注册时不传）
+      await register({
+        username: form.username,
+        password: form.password,
+        role_code: form.role
+      })
 
-      // 注册成功后暂存角色与用户名，跳回登录页自动填充
+      // 注册成功后暂存用户名与角色，跳回登录页自动填充
       localStorage.setItem('registered_username', form.username)
       localStorage.setItem('registered_role', form.role)
 
@@ -212,7 +218,7 @@ const handleRegister = async () => {
   align-items: center;
   justify-content: center;
   overflow-y: auto;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -298,14 +304,14 @@ const handleRegister = async () => {
 }
 
 .role-item:hover {
-  color: #2575fc;
+  color: #4dabf7;
 }
 
 .role-item.active {
   color: #fff;
   font-weight: 600;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-  box-shadow: 0 4px 10px rgba(37, 117, 252, 0.3);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
+  box-shadow: 0 4px 10px rgba(77, 171, 247, 0.3);
 }
 
 .submit-btn {
@@ -317,13 +323,13 @@ const handleRegister = async () => {
   letter-spacing: 2px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   transition: all 0.25s;
 }
 
 .submit-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(37, 117, 252, 0.35);
+  box-shadow: 0 8px 18px rgba(77, 171, 247, 0.35);
 }
 
 .footer {

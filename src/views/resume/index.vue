@@ -97,6 +97,32 @@
           </div>
         </template>
 
+        <!-- 简历附件上传：从本地电脑选择 Word/PDF 文件，后端保存原件并自动解析内容 -->
+        <div class="upload-section">
+          <el-upload
+            drag
+            accept=".doc,.docx,.pdf"
+            :show-file-list="false"
+            :http-request="handleUploadFile"
+          >
+            <el-icon class="upload-icon"><UploadFilled /></el-icon>
+            <div class="upload-text">
+              {{ uploading ? '正在上传解析中...' : '点击或拖拽上传简历文件（Word .doc/.docx、PDF，20MB 以内）' }}
+            </div>
+            <div class="upload-sub">从本地电脑选择简历文件上传，系统保存原件并自动解析内容填入下方编辑框</div>
+          </el-upload>
+
+          <!-- 已上传原件信息条 -->
+          <div v-if="uploadedFile" class="uploaded-file-bar">
+            <el-icon><Document /></el-icon>
+            <span class="file-name">{{ uploadedFile.name }}</span>
+            <el-tag size="small" type="success" effect="plain">原件已保存</el-tag>
+            <el-button link type="primary" size="small" :loading="downloading" @click="handleDownloadFile">
+              下载原件
+            </el-button>
+          </div>
+        </div>
+
         <el-form label-width="90px">
           <el-form-item label="简历标题">
             <el-input v-model="resumeForm.title" placeholder="如：张同学-前端开发求职简历" />
@@ -128,7 +154,7 @@
         </div>
 
         <div class="student-actions">
-          <el-button type="primary" :loading="saving" @click="handleSaveResume">保存简历</el-button>
+          <el-button v-permission="'student:resume:edit'" type="primary" :loading="saving" @click="handleSaveResume">保存简历</el-button>
           <el-button type="success" :loading="diagnosing" @click="handleDiagnose">AI 一键诊断</el-button>
         </div>
         <p class="tip">支持一键解析求职意向并使用 STAR 原则润色项目经验，教育/项目等经历统一保存在「简历内容」中。</p>
@@ -166,9 +192,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { updateResume, diagnoseResume } from '@/api/resume'
+import { UploadFilled, Document } from '@element-plus/icons-vue'
+import type { UploadRequestOptions } from 'element-plus'
+import { updateResume, diagnoseResume, uploadResume, getMyResume, downloadMyResume } from '@/api/resume'
 import type { ResumeDTO, DiagnosisResult } from '@/api/types'
 
 const role = ref(localStorage.getItem('role') || 'hr')
@@ -220,6 +248,67 @@ const resumeForm = reactive<ResumeDTO>({
 })
 const integrityScore = ref(72)
 
+// ================= 简历附件上传（本地 Word/PDF 文件 → 后端保存原件 + 解析文本） =================
+const uploading = ref(false)
+const downloading = ref(false)
+/** 已上传的原件信息（用于展示与下载） */
+const uploadedFile = ref<{ name: string } | null>(null)
+
+const handleUploadFile = async (options: UploadRequestOptions) => {
+  const file = options.file as File
+  uploading.value = true
+  try {
+    const vo = await uploadResume(file)
+    // 解析结果回填编辑框，可继续手工微调后保存
+    resumeForm.title = vo.title
+    resumeForm.parsedContent = vo.parsedContent
+    if (vo.templateCode) resumeForm.templateCode = vo.templateCode
+    if (vo.integrityScore != null) integrityScore.value = vo.integrityScore
+    uploadedFile.value = { name: file.name }
+    ElMessage.success('简历文件上传成功，内容已自动解析到下方编辑框')
+  } catch {
+    // 请求拦截器已统一弹错
+  } finally {
+    uploading.value = false
+  }
+}
+
+const handleDownloadFile = async () => {
+  downloading.value = true
+  try {
+    const blob = (await downloadMyResume()) as Blob
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = uploadedFile.value?.name || '我的简历'
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    // 请求拦截器已统一弹错
+  } finally {
+    downloading.value = false
+  }
+}
+
+// 进入页面时加载已保存的简历（仅学生角色，/resume/detail 需要 RESUME_SELF_VIEW 权限）
+onMounted(async () => {
+  if (role.value !== 'student') return
+  try {
+    const detail = await getMyResume()
+    if (detail) {
+      resumeForm.title = detail.title || resumeForm.title
+      resumeForm.parsedContent = detail.parsedContent || resumeForm.parsedContent
+      if (detail.templateCode) resumeForm.templateCode = detail.templateCode
+      if (detail.integrityScore != null) integrityScore.value = detail.integrityScore
+      if (detail.parsedContent?.startsWith('【简历原件】')) {
+        uploadedFile.value = { name: detail.parsedContent.split('\n')[0].replace('【简历原件】', '').trim() }
+      }
+    }
+  } catch {
+    // 未建档或请求失败时保持默认值
+  }
+})
+
 const saving = ref(false)
 const handleSaveResume = async () => {
   if (!resumeForm.title) return ElMessage.warning('请填写简历标题')
@@ -262,13 +351,22 @@ const handleDiagnose = async () => {
 .counselor-footer p { margin: 0; color: #606266; font-size: 13px; }
 
 .integrity-box { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; padding: 12px 16px; background: #f5f7fa; border-radius: 8px; }
+
+/* 简历附件上传区 */
+.upload-section { margin-bottom: 18px; }
+.upload-section :deep(.el-upload-dragger) { padding: 22px 20px; }
+.upload-icon { font-size: 40px; color: #4dabf7; margin-bottom: 8px; }
+.upload-text { font-size: 14px; color: #606266; }
+.upload-sub { margin-top: 4px; font-size: 12px; color: #909399; }
+.uploaded-file-bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 14px; background: #eef7ff; border: 1px solid #cbe7fd; border-radius: 8px; font-size: 13px; color: #1971c2; }
+.uploaded-file-bar .file-name { font-weight: 600; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .integrity-label { font-size: 13px; color: #606266; white-space: nowrap; }
 .integrity-bar { flex: 1; }
 .student-actions { display: flex; gap: 12px; }
 .tip { margin: 12px 0 0; font-size: 12px; color: #909399; }
 
 /* AI 诊断报告 */
-.report-score { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin-bottom: 16px; background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); border-radius: 12px; color: #fff; }
+.report-score { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin-bottom: 16px; background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%); border-radius: 12px; color: #fff; }
 .score-num { font-size: 44px; font-weight: 700; line-height: 1; }
 .score-label { font-size: 14px; font-weight: 600; }
 .score-target { font-size: 12px; opacity: 0.85; margin-top: 4px; }
@@ -276,6 +374,6 @@ const handleDiagnose = async () => {
 .section-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .section-title.strengths { color: #67c23a; }
 .section-title.shortcomings { color: #e6a23c; }
-.section-title.suggestions { color: #409eff; }
+.section-title.suggestions { color: #4dabf7; }
 .section-content { padding: 10px 14px; background: #f5f7fa; border-radius: 8px; font-size: 13px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
 </style>

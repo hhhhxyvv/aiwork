@@ -78,3 +78,69 @@ export function getStorageList() {
     () => request.get('/storage/list')
   )
 }
+
+// ==================== 文件传输演示（大/小文件上传下载） ====================
+
+/**
+ * ★演示点2：小文件批量上传 —— 多个文件 append 进同一个 FormData 的 files 字段
+ * 真实后端: POST /api/storage/batch-upload（FormData: files 多文件）
+ */
+export function batchUploadFiles(files: File[]) {
+  const formData = new FormData()
+  files.forEach((f) => formData.append('files', f))
+  return request.post('/storage/batch-upload', formData)
+}
+
+/**
+ * ★演示点3：上传断点续传 —— 上传前查询已存在分片（秒传 / 续传依据）
+ * 真实后端: GET /api/storage/chunk/check?fileHash=xxx
+ */
+export function checkChunks(fileHash: string) {
+  return request.get('/storage/chunk/check', { params: { fileHash } })
+}
+
+/**
+ * ★演示点1：上传单个分片，携带 chunkMd5 供服务端损坏校验（不匹配返回 code=5001）
+ * 真实后端: POST /api/storage/chunk/upload
+ */
+export function uploadChunk(chunk: Blob, fileHash: string, chunkIndex: number, chunkMd5?: string) {
+  const formData = new FormData()
+  formData.append('file', chunk, `chunk-${chunkIndex}`)
+  formData.append('fileHash', fileHash)
+  formData.append('chunkIndex', String(chunkIndex))
+  if (chunkMd5) formData.append('chunkMd5', chunkMd5)
+  return request.post('/storage/chunk/upload', formData)
+}
+
+/**
+ * ★演示点1：分片合并 —— 后端接口用 @RequestParam，必须用 FormData 提交
+ * 真实后端: POST /api/storage/chunk/merge
+ */
+export function mergeChunks(params: {
+  fileHash: string
+  fileName: string
+  chunkTotal: number
+  fileSize: number
+}) {
+  const formData = new FormData()
+  formData.append('fileHash', params.fileHash)
+  formData.append('fileName', params.fileName)
+  formData.append('chunkTotal', String(params.chunkTotal))
+  formData.append('fileSize', String(params.fileSize))
+  return request.post('/storage/chunk/merge', formData)
+}
+
+/**
+ * ★演示点4：普通下载 —— axios onDownloadProgress 用 loaded/total 驱动进度条
+ * 真实后端: GET /api/storage/download/{id}
+ */
+export function downloadFileById(
+  id: number | string,
+  onProgress?: (loaded: number, total: number) => void
+) {
+  return request.get(`/storage/download/${id}`, {
+    responseType: 'blob',
+    timeout: 0, // 大文件/并发下载不限时（request 实例默认 10s 会中断长下载）
+    onDownloadProgress: (e) => onProgress?.(e.loaded, e.total ?? 0)
+  })
+}

@@ -58,6 +58,29 @@
           </el-input>
         </el-form-item>
 
+        <!-- 图形验证码（防爬防刷）：输入框 + 可点击刷新的验证码图 -->
+        <el-form-item prop="captchaCode">
+          <div class="captcha-row">
+            <el-input
+              v-model="form.captchaCode"
+              placeholder="请输入验证码"
+              :prefix-icon="Key"
+              maxlength="4"
+              clearable
+            />
+            <el-tooltip content="点击更换" placement="top">
+              <img
+                v-if="captchaImg"
+                :src="captchaImg"
+                alt="验证码"
+                class="captcha-img"
+                @click="fetchCaptcha"
+              />
+              <div v-else class="captcha-img captcha-loading" @click="fetchCaptcha">加载中</div>
+            </el-tooltip>
+          </div>
+        </el-form-item>
+
         <el-form-item>
           <el-button
             type="primary"
@@ -83,15 +106,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { login } from '@/api/auth'
+import { login, getCaptcha } from '@/api/auth'
 import type { UserRole } from '@/api/types'
 import {
   User,
   Lock,
+  Key,
   View,
   Hide,
   Compass,
@@ -114,8 +138,13 @@ const roles = [
 const form = reactive({
   role: 'student',
   username: '',
-  password: ''
+  password: '',
+  captchaKey: '',
+  captchaCode: ''
 })
+
+// 图形验证码图片（base64 dataURL）
+const captchaImg = ref('')
 
 // 密码显示切换
 const passwordVisible = ref(false)
@@ -133,8 +162,30 @@ const rules: FormRules = {
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码至少 6 位', trigger: 'blur' }
+  ],
+  captchaCode: [
+    { required: true, message: '请输入图形验证码', trigger: 'blur' },
+    { min: 4, max: 4, message: '验证码为 4 位', trigger: 'blur' }
   ]
 }
+
+// 获取/刷新图形验证码：GET /auth/captcha → { captchaKey, captchaImg }
+const fetchCaptcha = async () => {
+  try {
+    const res = await getCaptcha()
+    form.captchaKey = res?.captchaKey || ''
+    captchaImg.value = res?.captchaImg || ''
+  } catch {
+    // 验证码加载失败不阻断页面，图片区显示可点击重试的占位
+    form.captchaKey = ''
+    captchaImg.value = ''
+  }
+}
+
+// 页面加载即请求验证码
+onMounted(() => {
+  fetchCaptcha()
+})
 
 // 登录处理：调用真实后端 /auth/login 获取有效 JWT
 const handleLogin = async () => {
@@ -146,12 +197,18 @@ const handleLogin = async () => {
       const res = await login({
         username: form.username,
         password: form.password,
-        role: form.role as UserRole
+        role: form.role as UserRole,
+        captchaKey: form.captchaKey,
+        captchaCode: form.captchaCode
       })
 
       // 存入 localStorage（对齐后端 userInfo 新契约：department / className 替代 deptId）
+      // RBAC：roles/permissions 数组以 JSON 持久化；role 保留 roles[0] 向后兼容老代码
+      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || form.role]
       localStorage.setItem('token', res.token)
-      localStorage.setItem('role', res.role || form.role)
+      localStorage.setItem('roles', JSON.stringify(backendRoles))
+      localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
+      localStorage.setItem('role', backendRoles[0] || form.role)
       localStorage.setItem('username', res.userInfo?.name || form.username)
       localStorage.setItem('department', res.userInfo?.department || '')
       localStorage.setItem('className', res.userInfo?.className || '')
@@ -161,7 +218,10 @@ const handleLogin = async () => {
       const redirect = (router.currentRoute.value.query.redirect as string) || '/'
       router.push(redirect)
     } catch {
-      // 请求拦截器已统一弹错（密码错误 / 后端不可用等），这里不再重复提示
+      // 请求拦截器已统一弹错（验证码错误/过期 400、密码错误、后端不可用等）
+      // 登录失败自动刷新验证码并清空已输入的验证码
+      form.captchaCode = ''
+      fetchCaptcha()
     } finally {
       loading.value = false
     }
@@ -179,7 +239,7 @@ const handleLogin = async () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: url('/image/868f4b42c391617a6d201d8de590ab91.jpg') center center / cover no-repeat;
+  background: url('/image/login-bg.jpg') center center / cover no-repeat;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -222,9 +282,9 @@ const handleLogin = async () => {
   justify-content: center;
   font-size: 32px;
   color: #fff;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   border-radius: 18px;
-  box-shadow: 0 8px 20px rgba(106, 17, 203, 0.35);
+  box-shadow: 0 8px 20px rgba(77, 171, 247, 0.35);
 }
 
 .title {
@@ -271,14 +331,14 @@ const handleLogin = async () => {
 }
 
 .role-item:hover {
-  color: #2575fc;
+  color: #4dabf7;
   background: #fff;
 }
 
 .role-item.active {
   color: #fff;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-  box-shadow: 0 4px 12px rgba(37, 117, 252, 0.35);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
+  box-shadow: 0 4px 12px rgba(77, 171, 247, 0.35);
 }
 
 /* 表单 */
@@ -288,7 +348,7 @@ const handleLogin = async () => {
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #2575fc inset;
+  box-shadow: 0 0 0 1px #4dabf7 inset;
 }
 
 .pwd-toggle {
@@ -298,7 +358,43 @@ const handleLogin = async () => {
 }
 
 .pwd-toggle:hover {
-  color: #2575fc;
+  color: #4dabf7;
+}
+
+/* 图形验证码行：输入框 + 验证码图 */
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.captcha-row .el-input {
+  flex: 1;
+}
+
+.captcha-img {
+  width: 118px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid #dcdfe6;
+  cursor: pointer;
+  object-fit: cover;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.captcha-img:hover {
+  border-color: #4dabf7;
+}
+
+.captcha-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #909399;
 }
 
 /* 登录按钮 */
@@ -310,13 +406,13 @@ const handleLogin = async () => {
   letter-spacing: 4px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   transition: all 0.3s ease;
 }
 
 .login-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(37, 117, 252, 0.4);
+  box-shadow: 0 8px 20px rgba(77, 171, 247, 0.4);
 }
 
 .login-btn:active {

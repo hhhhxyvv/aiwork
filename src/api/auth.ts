@@ -4,6 +4,18 @@ import { mockOrReal } from './_mock'
 import type { LoginParams, LoginResult } from './types'
 
 /**
+ * 获取图形验证码（防爬防刷）
+ * 真实后端: GET /api/auth/captcha
+ * 响应: { captchaKey: "uuid...", captchaImg: "data:image/png;base64,..." }
+ */
+export function getCaptcha(): Promise<{ captchaKey: string; captchaImg: string }> {
+  return mockOrReal(
+    () => ({ captchaKey: 'mock-key', captchaImg: '' }),
+    () => request.get('/auth/captcha') as any
+  ) as Promise<{ captchaKey: string; captchaImg: string }>
+}
+
+/**
  * 登录接口
  * 真实后端: POST /api/auth/login
  */
@@ -13,6 +25,8 @@ export function login(params: LoginParams) {
     () => ({
       token: `mock-token-${Date.now()}`,
       role: params.role,
+      roles: [params.role as string],
+      permissions: [],
       userInfo: {
         id: 1,
         username: params.username,
@@ -30,16 +44,26 @@ export function login(params: LoginParams) {
         username: params.username,
         password: params.password,
         role: params.role,
-        role_code: params.role
+        role_code: params.role,
+        // 图形验证码（后端登录拦截器校验，错误/过期返回 400）
+        captchaKey: params.captchaKey,
+        captchaCode: params.captchaCode
       })
 
       // 提取后端的真实字段并平铺兼容前端
       const role = (res.role || params.role) as LoginResult['role']
       const realName = res.userInfo?.realName || res.userInfo?.name || params.username
+      // RBAC 字段防御性解析：后端已返回 roles/permissions 数组则透传；
+      // 本地后端暂未同步时回退为单角色 + 空权限，保持系统可用
+      const roles: string[] =
+        Array.isArray(res.roles) && res.roles.length > 0 ? res.roles : [role as string]
+      const permissions: string[] = Array.isArray(res.permissions) ? res.permissions : []
 
       return {
         token: res.token,
         role: role,
+        roles,
+        permissions,
         userInfo: {
           id: res.userInfo?.id || 1,
           username: res.userInfo?.name || res.userInfo?.username || params.username,

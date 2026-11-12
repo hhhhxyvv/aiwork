@@ -14,8 +14,8 @@
         :collapse="isCollapse"
         :collapse-transition="false"
         router
-        background-color="#1f2937"
-        text-color="#b7bdc3"
+        background-color="#eef7ff"
+        text-color="#5a7ba6"
         active-text-color="#ffffff"
       >
         <el-menu-item
@@ -79,6 +79,7 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { routes } from '@/router'
+import { hasPermission } from '@/utils/permission'
 import {
   Compass,
   DataAnalysis,
@@ -90,7 +91,8 @@ import {
   Fold,
   Expand,
   ArrowDown,
-  UserFilled
+  UserFilled,
+  Key
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -117,9 +119,13 @@ const menuList = computed(() => {
   if (!layoutRoute || !layoutRoute.children) return []
 
   return layoutRoute.children.filter((item) => {
+    // 1) 优先兼容 meta.roles：声明了角色列表则必须包含当前角色
     const itemRoles = (item.meta?.roles as string[]) || []
-    // 未声明 roles 则默认所有人可见；声明了则必须包含当前角色
-    return itemRoles.length === 0 || itemRoles.includes(currentRole.value)
+    if (itemRoles.length > 0 && !itemRoles.includes(currentRole.value)) return false
+    // 2) 声明了 meta.permission：必须通过权限点校验（后端 RBAC）
+    const requiredPerm = item.meta?.permission as string | undefined
+    if (requiredPerm && !hasPermission(requiredPerm)) return false
+    return true
   })
 })
 
@@ -137,9 +143,9 @@ const handleCommand = (command: string) => {
       type: 'warning'
     })
       .then(() => {
-        localStorage.removeItem('token')
-        localStorage.removeItem('role')
-        localStorage.removeItem('username')
+        // 完整清理登录态与 RBAC 缓存（与 Login.vue 写入的 key 一一对应）
+        const keys = ['token', 'role', 'roles', 'permissions', 'username', 'department', 'className', 'userId', 'realName']
+        keys.forEach((k) => localStorage.removeItem(k))
         ElMessage.success('已安全退出')
         router.push('/login')
       })
@@ -163,7 +169,8 @@ const handleCommand = (command: string) => {
 .sidebar {
   width: 220px;
   height: 100%;
-  background-color: #1f2937;
+  background-color: #eef7ff;
+  border-right: 1px solid #cbe7fd;
   display: flex;
   flex-direction: column;
   transition: width 0.28s ease;
@@ -181,20 +188,21 @@ const handleCommand = (command: string) => {
   align-items: center;
   padding: 0 20px;
   gap: 12px;
-  background-color: #111827;
+  background: linear-gradient(135deg, #ddf0fe 0%, #cbe7fd 100%);
+  border-bottom: 1px solid #cbe7fd;
   flex-shrink: 0;
 }
 
 .logo-icon {
   font-size: 26px;
-  color: #3b82f6;
+  color: #1971c2;
   flex-shrink: 0;
 }
 
 .logo-text {
   font-size: 16px;
   font-weight: 700;
-  color: #ffffff;
+  color: #1971c2;
   white-space: nowrap;
   letter-spacing: 1px;
 }
@@ -204,9 +212,21 @@ const handleCommand = (command: string) => {
   border-right: none;
 }
 
+:deep(.el-menu-item) {
+  margin: 4px 10px;
+  border-radius: 8px;
+  height: 46px;
+}
+
+:deep(.el-menu-item:hover) {
+  background: #ddf0fe !important;
+  color: #1971c2 !important;
+}
+
 :deep(.el-menu-item.is-active) {
-  background-color: #2563eb !important;
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%) !important;
   color: #ffffff !important;
+  box-shadow: 0 3px 8px rgba(77, 171, 247, 0.35);
 }
 
 /* 右侧主体 */
@@ -221,8 +241,8 @@ const handleCommand = (command: string) => {
 /* 顶部导航 */
 .navbar {
   height: 60px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #eef7ff 0%, #ddf0fe 100%);
+  border-bottom: 1px solid #cbe7fd;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -244,7 +264,7 @@ const handleCommand = (command: string) => {
 }
 
 .collapse-btn:hover {
-  color: #2563eb;
+  color: #4dabf7;
 }
 
 .breadcrumb {
@@ -269,7 +289,7 @@ const handleCommand = (command: string) => {
 }
 
 .user-avatar {
-  background-color: #3b82f6;
+  background-color: #4dabf7;
 }
 
 .username {

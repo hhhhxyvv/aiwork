@@ -12,6 +12,10 @@
     </div>
 
     <div class="right">
+      <!-- 文件传输演示页跳转入口 -->
+      <el-button link type="primary" class="demo-link" @click="router.push('/file-demo')">
+        <el-icon style="margin-right: 4px"><Upload /></el-icon>文件传输演示
+      </el-button>
       <el-dropdown @command="handleCommand">
         <span class="user-info">
           <el-avatar :size="32" :icon="UserFilled" />
@@ -96,7 +100,17 @@ const handleCommand = async (command: string) => {
 }
 
 .collapse-btn:hover {
-  color: #2575fc;
+  color: #4dabf7;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.demo-link {
+  font-size: 13px;
 }
 
 .user-info {

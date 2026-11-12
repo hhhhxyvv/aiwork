@@ -380,7 +380,7 @@ onMounted(() => {
 }
 
 .ai-avatar {
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   color: #fff;
   flex-shrink: 0;
 }
@@ -412,7 +412,7 @@ onMounted(() => {
 }
 
 .user-bubble {
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   color: #ffffff;
   border-top-right-radius: 4px;
 }
