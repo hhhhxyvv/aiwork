@@ -35,7 +35,8 @@ export interface UserInfo {
 export interface LoginParams {
   username: string
   password: string
-  role: UserRole
+  /** 登录页已不再选择角色，后端根据账号密码查询返回；仅 Mock 兜底等场景可能传入 */
+  role?: UserRole
   /** 图形验证码 key（GET /auth/captcha 返回） */
   captchaKey?: string
   /** 用户输入的图形验证码 */

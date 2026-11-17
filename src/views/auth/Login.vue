@@ -10,20 +10,6 @@
         <h1 class="title">AI大学生就业服务智能体</h1>
       </div>
 
-      <!-- 角色切换 -->
-      <div class="role-switcher">
-        <div
-          v-for="role in roles"
-          :key="role.value"
-          class="role-item"
-          :class="{ active: form.role === role.value }"
-          @click="form.role = role.value"
-        >
-          <el-icon><component :is="role.icon" /></el-icon>
-          <span>{{ role.label }}</span>
-        </div>
-      </div>
-
       <!-- 表单 -->
       <el-form
         ref="formRef"
@@ -111,32 +97,22 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { login, getCaptcha } from '@/api/auth'
-import type { UserRole } from '@/api/types'
 import {
   User,
   Lock,
   Key,
   View,
   Hide,
-  Compass,
-  Reading,
-  Briefcase,
-  OfficeBuilding
+  Compass
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
-// 角色列表
-const roles = [
-  { label: '学生', value: 'student', icon: Reading },
-  { label: '辅导员', value: 'counselor', icon: User },
-  { label: '企业HR', value: 'hr', icon: Briefcase },
-  { label: '院系管理员', value: 'admin', icon: OfficeBuilding }
-]
+// 系统支持的合法角色集合（与路由守卫 meta.roles / dashboard 四套工作台保持一致）
+const VALID_ROLES = ['student', 'counselor', 'hr', 'admin']
 
-// 表单数据
+// 表单数据（角色由后端根据账号密码查询返回，登录页不再选择）
 const form = reactive({
-  role: 'student',
   username: '',
   password: '',
   captchaKey: '',
@@ -194,27 +170,39 @@ const handleLogin = async () => {
     if (!valid) return
     loading.value = true
     try {
+      // 角色由后端根据账号密码查询返回，前端不发送 roleCode
       const res = await login({
         username: form.username,
         password: form.password,
-        role: form.role as UserRole,
         captchaKey: form.captchaKey,
         captchaCode: form.captchaCode
       })
 
+      // 按项目现有解析方式读取后端 RBAC 字段：roles 优先，回退 role
+      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
+      const mainRole = (backendRoles[0] || '').toLowerCase()
+
+      // 后端角色不在系统支持映射中：提示并保持在登录页，不进入错误工作台
+      if (!VALID_ROLES.includes(mainRole)) {
+        ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
+        form.captchaCode = ''
+        fetchCaptcha()
+        return
+      }
+
       // 存入 localStorage（对齐后端 userInfo 新契约：department / className 替代 deptId）
       // RBAC：roles/permissions 数组以 JSON 持久化；role 保留 roles[0] 向后兼容老代码
-      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || form.role]
       localStorage.setItem('token', res.token)
       localStorage.setItem('roles', JSON.stringify(backendRoles))
       localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
-      localStorage.setItem('role', backendRoles[0] || form.role)
+      localStorage.setItem('role', mainRole)
       localStorage.setItem('username', res.userInfo?.name || form.username)
       localStorage.setItem('department', res.userInfo?.department || '')
       localStorage.setItem('className', res.userInfo?.className || '')
 
       ElMessage.success('登录成功，正在跳转...')
-      // 支持登录后回跳到原本想去的页面
+      // 复用现有跳转逻辑：/ 重定向到 /dashboard，由 dashboard 按真实角色渲染对应工作台；
+      // 带 redirect 参数时回跳原目标页（路由守卫 meta.roles 会做二次校验）
       const redirect = (router.currentRoute.value.query.redirect as string) || '/'
       router.push(redirect)
     } catch {

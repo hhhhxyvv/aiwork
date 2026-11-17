@@ -21,17 +21,17 @@ export function getCaptcha(): Promise<{ captchaKey: string; captchaImg: string }
  */
 export function login(params: LoginParams) {
   return mockOrReal<LoginResult>(
-    // Mock 模式兜底
+    // Mock 模式兜底（真实登录时角色由后端返回）
     () => ({
       token: `mock-token-${Date.now()}`,
-      role: params.role,
-      roles: [params.role as string],
+      role: params.role || 'student',
+      roles: [params.role || 'student'],
       permissions: [],
       userInfo: {
         id: 1,
         username: params.username,
         name: params.username,
-        role: params.role,
+        role: params.role || 'student',
         avatar: '',
         department: '信息工程学院',
         className: '软件2101班'
@@ -39,12 +39,10 @@ export function login(params: LoginParams) {
     }),
     // 真实后端请求
     async () => {
-      // 同时传递 role 与 role_code，保证后端无论是用哪一个字段接收都能兼容
+      // 角色由后端根据账号密码查询返回，登录请求不再发送 role/role_code
       const res: any = await request.post('/auth/login', {
         username: params.username,
         password: params.password,
-        role: params.role,
-        role_code: params.role,
         // 图形验证码（后端登录拦截器校验，错误/过期返回 400）
         captchaKey: params.captchaKey,
         captchaCode: params.captchaCode
