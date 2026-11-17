@@ -1,30 +1,36 @@
 <template>
-  <div class="role-page">
+  <div v-loading="rolesLoading" class="role-page">
     <!-- 页头 -->
     <div class="page-header">
       <div>
         <h2 class="page-title">角色权限配置</h2>
-        <p class="page-desc">RBAC 动态授权：为各角色勾选菜单 / 按钮 / 接口权限，保存后立即生效（重新登录获取新 Token）</p>
+        <p class="page-desc">选择角色并配置权限，保存后重新登录可更新页面权限。</p>
       </div>
     </div>
 
-    <!-- 角色卡片列表 -->
+    <el-alert v-if="rolesError" :title="rolesError" type="error" :closable="false">
+      <el-button link type="primary" @click="loadRoles">重新加载</el-button>
+    </el-alert>
+    <el-empty v-else-if="!rolesLoading && roleList.length === 0" description="暂无角色" />
+
+    <!-- 角色 ID 和名称直接使用后端数据，避免向错误角色提交授权。 -->
     <el-row :gutter="20">
-      <el-col v-for="r in roleList" :key="r.roleId" :span="6">
+      <el-col v-for="r in roleList" :key="r.id" :span="6">
         <el-card shadow="hover" class="role-card">
           <div class="role-head">
-            <el-avatar :size="46" class="role-avatar">{{ r.label.charAt(0) }}</el-avatar>
+            <el-avatar :size="46" class="role-avatar">{{ r.roleName.charAt(0) }}</el-avatar>
             <div class="role-meta">
-              <div class="role-name">{{ r.label }}</div>
-              <div class="role-code">roleId: {{ r.roleId }}</div>
+              <div class="role-name">{{ r.roleName }}</div>
+              <div class="role-code">roleId: {{ r.id }}</div>
             </div>
           </div>
-          <div class="role-desc">{{ r.desc }}</div>
+          <div class="role-desc">{{ r.roleCode }}</div>
           <el-button
             type="primary"
             class="assign-btn"
             :icon="Key"
-            :loading="loadingRoleId === r.roleId"
+            :loading="loadingRoleId === r.id"
+            :disabled="treeLoading || saving"
             @click="openAssignDialog(r)"
           >
             分配权限
@@ -36,49 +42,43 @@
     <!-- 授权弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="`分配权限 - ${currentRole?.label || ''}`"
+      :title="`分配权限 - ${currentRole?.roleName || ''}`"
       width="560px"
       :close-on-click-modal="false"
+      :close-on-press-escape="!saving"
+      :show-close="!saving"
       @closed="resetDialogState"
     >
       <div v-loading="treeLoading" class="tree-wrap">
         <div class="tree-tip">
-          当前角色：<el-tag size="small" type="primary">{{ currentRole?.label }}</el-tag>
-          <span class="tip-text">勾选后点击保存，覆盖式提交该角色全部权限</span>
+          当前角色：<el-tag size="small" type="primary">{{ currentRole?.roleName }}</el-tag>
+          <span class="tip-text">勾选后点击保存，覆盖该角色的自定义授权</span>
         </div>
 
         <el-tree
           ref="treeRef"
-          :data="groupedTree"
-          node-key="id"
+          :data="permissionList"
+          node-key="code"
           show-checkbox
           default-expand-all
-          :props="{ label: 'name', children: 'children', disabled: 'disabled' }"
+          :props="{ label: 'name' }"
         >
           <template #default="{ data }">
             <span class="tree-node">
-              <!-- 分组节点 -->
-              <template v-if="data.isGroup">
-                <el-icon class="group-icon"><Folder /></el-icon>
-                <span class="group-name">{{ data.name }}</span>
-                <el-tag size="small" effect="plain">{{ data.children.length }} 项</el-tag>
-              </template>
-              <!-- 权限叶子节点：name + code (+ apiPath) -->
-              <template v-else>
-                <span class="leaf-name">{{ data.name }}</span>
-                <span class="leaf-code">{{ data.code }}</span>
-                <span v-if="data.apiPath" class="leaf-api">{{ data.apiPath }}</span>
-              </template>
+              <span class="leaf-name">{{ data.name }}</span>
+              <span class="leaf-code">{{ data.code }}</span>
             </span>
           </template>
         </el-tree>
 
-        <el-empty v-if="!treeLoading && groupedTree.length === 0" description="后端未返回任何权限数据" :image-size="80" />
+        <el-alert v-if="permissionError" :title="permissionError" type="error" :closable="false" />
+        <el-empty v-else-if="!treeLoading && permissionList.length === 0" description="后端未返回任何权限数据" :image-size="80" />
+        <p class="tip-text">当前规则：清空勾选后保存，将恢复后端内置默认权限。</p>
       </div>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="treeLoading || groupedTree.length === 0" @click="handleSave">
+        <el-button :disabled="saving" @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!permissionsReady || treeLoading || permissionList.length === 0" @click="handleSave">
           保存
         </el-button>
       </template>
@@ -87,94 +87,98 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ElTree } from 'element-plus'
-import { Key, Folder } from '@element-plus/icons-vue'
+import { Key } from '@element-plus/icons-vue'
 import {
-  getPermissionTree,
-  getRolePermissionIds,
+  getPermissions,
+  getRoles,
   assignRolePermissions,
-  type PermissionVO
+  type PermissionVO,
+  type RoleVO
 } from '@/api/permission'
 
-// 角色列表：roleId 与后端 sys_role 表主键对应（admin=1 / counselor=2 / hr=3 / student=4，如与库不一致按实际调整）
-const roleList = [
-  { roleId: 1, label: '院系管理员', code: 'admin', desc: '全院数据大屏、院系专业、角色权限、存储中心' },
-  { roleId: 2, label: '辅导员', code: 'counselor', desc: '实习审批、周报检查、所带班级就业统计' },
-  { roleId: 3, label: '企业 HR', code: 'hr', desc: '岗位发布与下架、简历初筛、实习评价' },
-  { roleId: 4, label: '学生', code: 'student', desc: '简历中心、岗位投递、AI 面试、政策问答' }
-]
-
+const roleList = ref<RoleVO[]>([])
+const rolesLoading = ref(false)
+const rolesError = ref('')
 const treeRef = ref<InstanceType<typeof ElTree>>()
 const dialogVisible = ref(false)
 const treeLoading = ref(false)
 const saving = ref(false)
 const loadingRoleId = ref<number | null>(null)
-const currentRole = ref<(typeof roleList)[number] | null>(null)
+const currentRole = ref<RoleVO | null>(null)
 const permissionList = ref<PermissionVO[]>([])
+const permissionsReady = ref(false)
+const permissionError = ref('')
+let permissionRequestId = 0
 
-const TYPE_LABEL: Record<string, string> = {
-  MENU: '菜单权限',
-  BUTTON: '按钮权限',
-  API: '接口权限'
+const loadRoles = async () => {
+  rolesLoading.value = true
+  rolesError.value = ''
+  try {
+    const roles = await getRoles()
+    if (!Array.isArray(roles)) throw new Error('角色数据格式不正确')
+    roleList.value = roles
+  } catch {
+    roleList.value = []
+    rolesError.value = '加载角色失败，请重新加载'
+  } finally {
+    rolesLoading.value = false
+  }
 }
 
-/** 平铺权限数组 → 按 resourceType 二级分组树（分组节点 disabled，仅叶子可勾选） */
-const groupedTree = computed(() => {
-  const groups = new Map<string, PermissionVO[]>()
-  for (const p of permissionList.value) {
-    const key = (p.resourceType || 'API').toUpperCase()
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(p)
-  }
-  // 固定顺序：MENU → BUTTON → API，其余类型追加在后
-  const ordered = ['MENU', 'BUTTON', 'API', ...groups.keys().filter((k) => !['MENU', 'BUTTON', 'API'].includes(k))]
-  return ordered
-    .filter((k) => groups.has(k))
-    .map((k) => ({
-      id: `group-${k}`,
-      name: TYPE_LABEL[k] || k,
-      isGroup: true,
-      disabled: true,
-      children: groups.get(k)!
-    }))
-})
-
-/** 打开弹窗：并行拉取全量权限 + 该角色已授权 ID，并回显勾选 */
-const openAssignDialog = async (role: (typeof roleList)[number]) => {
+/** 每次打开都读取最新角色权限；后端以 code 授权，不使用权限 ID。 */
+const openAssignDialog = async (role: RoleVO) => {
+  const requestId = ++permissionRequestId
   currentRole.value = role
   dialogVisible.value = true
   treeLoading.value = true
-  loadingRoleId.value = role.roleId
+  permissionsReady.value = false
+  permissionError.value = ''
+  permissionList.value = []
+  treeRef.value?.setCheckedKeys([])
+  loadingRoleId.value = role.id
   try {
-    // 权限树有缓存时不必重复拉取，但角色勾选每次都要查
-    const [list, checkedIds] = await Promise.all([
-      permissionList.value.length ? Promise.resolve(permissionList.value) : getPermissionTree(),
-      getRolePermissionIds(role.roleId)
-    ])
-    permissionList.value = Array.isArray(list) ? list : []
+    const [list, roles] = await Promise.all([getPermissions(), getRoles()])
+    if (requestId !== permissionRequestId || !dialogVisible.value) return
+    if (!Array.isArray(list) || !Array.isArray(roles)) throw new Error('权限数据格式不正确')
+    const latestRole = roles.find((item) => item.id === role.id)
+    if (!latestRole || !Array.isArray(latestRole.permissions)) throw new Error('角色不存在或权限数据不完整')
+    roleList.value = roles
+    currentRole.value = latestRole
+    permissionList.value = list
+    const availableCodes = new Set(list.map((item) => item.code))
     await nextTick()
-    treeRef.value?.setCheckedKeys(Array.isArray(checkedIds) ? checkedIds : [], false)
-  } catch (e) {
-    ElMessage.error('加载权限数据失败，请稍后重试')
+    if (requestId !== permissionRequestId || !dialogVisible.value) return
+    treeRef.value?.setCheckedKeys(latestRole.permissions.filter((code) => availableCodes.has(code)), false)
+    permissionsReady.value = true
+  } catch {
+    if (requestId !== permissionRequestId || !dialogVisible.value) return
+    permissionError.value = '加载权限数据失败，请关闭后重试'
+    ElMessage.error(permissionError.value)
   } finally {
-    treeLoading.value = false
-    loadingRoleId.value = null
+    if (requestId === permissionRequestId) {
+      treeLoading.value = false
+      loadingRoleId.value = null
+    }
   }
 }
 
-/** 保存授权：getCheckedKeys(false) 仅取全选节点，过滤掉字符串分组 key */
+/** PUT /system/roles/{roleId}/permissions，提交权限编码数组。 */
 const handleSave = async () => {
-  if (!currentRole.value) return
+  if (!currentRole.value || !permissionsReady.value || treeLoading.value || saving.value || !treeRef.value) return
+  const role = currentRole.value
   const rawKeys = (treeRef.value?.getCheckedKeys(false) || []) as Array<number | string>
-  const permissionIds = rawKeys.filter((k): k is number => typeof k === 'number')
+  const availableCodes = new Set(permissionList.value.map((item) => item.code))
+  const permissions = rawKeys.filter((key): key is string => typeof key === 'string' && availableCodes.has(key))
   saving.value = true
   try {
-    await assignRolePermissions({ roleId: currentRole.value.roleId, permissionIds })
-    ElMessage.success(`已保存「${currentRole.value.label}」的 ${permissionIds.length} 项权限，重新登录后生效`)
+    await assignRolePermissions({ roleId: role.id, permissions })
+    ElMessage.success(`已保存「${role.roleName}」的权限配置，重新登录可更新页面权限`)
     dialogVisible.value = false
-  } catch (e) {
+    await loadRoles()
+  } catch {
     ElMessage.error('保存失败，请稍后重试')
   } finally {
     saving.value = false
@@ -182,9 +186,17 @@ const handleSave = async () => {
 }
 
 const resetDialogState = () => {
+  ++permissionRequestId
   treeRef.value?.setCheckedKeys([], false)
   currentRole.value = null
+  permissionList.value = []
+  permissionsReady.value = false
+  permissionError.value = ''
+  treeLoading.value = false
+  loadingRoleId.value = null
 }
+
+onMounted(loadRoles)
 </script>
 
 <style scoped>

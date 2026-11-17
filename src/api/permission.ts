@@ -1,34 +1,32 @@
 import request from '@/utils/request'
 
-/** 后端权限点 VO（GET /auth/permission/tree 返回平铺数组） */
+/** GET /system/permissions：后端按权限编码提供授权选项。 */
 export interface PermissionVO {
-  id: number
   code: string
   name: string
-  resourceType: 'MENU' | 'BUTTON' | 'API'
-  apiPath?: string
 }
 
-/**
- * 获取全量权限平铺列表
- * 响应（拦截器解包后）：List<PermissionVO>，字段 id/code/name/resourceType/apiPath
- */
-export function getPermissionTree(): Promise<PermissionVO[]> {
-  return request.get('/auth/permission/tree') as unknown as Promise<PermissionVO[]>
+/** GET /system/roles：角色 ID、名称及当前生效的权限均由后端返回。 */
+export interface RoleVO {
+  id: number
+  roleCode: string
+  roleName: string
+  dataScope: number
+  permissions: string[]
+  configured: boolean
 }
 
-/**
- * 查询指定角色已拥有的权限 ID 数组
- * 响应（拦截器解包后）：number[]，如 [3, 4, 8]
- */
-export function getRolePermissionIds(roleId: number): Promise<number[]> {
-  return request.get(`/auth/permission/role/${roleId}`) as unknown as Promise<number[]>
+export function getPermissions(): Promise<PermissionVO[]> {
+  return request.get('/system/permissions') as unknown as Promise<PermissionVO[]>
 }
 
-/**
- * 角色授权：覆盖式保存该角色的权限集合
- * 请求体：{ roleId, permissionIds }
- */
-export function assignRolePermissions(data: { roleId: number; permissionIds: number[] }): Promise<unknown> {
-  return request.post('/auth/permission/role/assign', data)
+export function getRoles(): Promise<RoleVO[]> {
+  return request.get('/system/roles') as unknown as Promise<RoleVO[]>
+}
+
+/** 覆盖自定义授权；空数组沿用现有后端规则，恢复内置默认权限。 */
+export function assignRolePermissions(data: { roleId: number; permissions: string[] }): Promise<unknown> {
+  return request.put(`/system/roles/${data.roleId}/permissions`, {
+    permissions: data.permissions
+  })
 }
