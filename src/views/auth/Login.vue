@@ -10,8 +10,34 @@
         <h1 class="title">AI大学生就业服务智能体</h1>
       </div>
 
+      <!-- 登录方式页签 -->
+      <div class="login-tabs">
+        <div
+          class="tab-item"
+          :class="{ active: loginMode === 'account' }"
+          @click="switchLoginMode('account')"
+        >
+          账号登录
+        </div>
+        <div
+          class="tab-item"
+          :class="{ active: loginMode === 'qrcode' }"
+          @click="switchLoginMode('qrcode')"
+        >
+          扫码登录
+        </div>
+        <div
+          class="tab-item"
+          :class="{ active: loginMode === 'email' }"
+          @click="switchLoginMode('email')"
+        >
+          邮箱登录
+        </div>
+      </div>
+
       <!-- 表单 -->
       <el-form
+        v-show="loginMode === 'account'"
         ref="formRef"
         :model="form"
         :rules="rules"
@@ -79,6 +105,98 @@
         </el-form-item>
       </el-form>
 
+      <!-- 扫码登录面板：手机扫描后打开确认页，手机确认后本页自动登录 -->
+      <div v-show="loginMode === 'qrcode'" class="qr-panel">
+        <div class="qr-box">
+          <img
+            v-if="qrImg && qrStatus !== 'EXPIRED' && qrStatus !== 'CANCELED'"
+            :src="qrImg"
+            class="qr-img"
+            alt="登录二维码"
+          />
+          <div v-else class="qr-placeholder" @click="createQr">
+            <el-icon><Refresh /></el-icon>
+            <span>{{ qrLoading ? '二维码生成中…' : '二维码已失效，点击刷新' }}</span>
+          </div>
+          <!-- 已扫码：提示回到手机上确认 -->
+          <div v-if="qrStatus === 'SCANNED'" class="qr-mask">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>已扫码，请在手机上确认</span>
+          </div>
+        </div>
+
+        <p class="qr-tip">
+          <template v-if="qrStatus === 'SCANNED'">已扫码，请在手机上点击“确认登录”</template>
+          <template v-else-if="qrStatus === 'CONFIRMED'">登录成功，正在跳转…</template>
+          <template v-else-if="qrLoading">正在生成二维码…</template>
+          <template v-else-if="qrStatus === 'EXPIRED'">二维码已失效，点击上方重新生成</template>
+          <template v-else-if="qrStatus === 'CANCELED'">手机端已取消登录，点击上方重新生成</template>
+          <template v-else>请使用手机扫描二维码，{{ qrRemain }} 秒内有效</template>
+        </p>
+
+        <!-- 二维码实际指向的地址：手机访问不到时据此排查 -->
+        <p class="qr-url" :title="qrScanUrl">{{ qrScanUrl }}</p>
+        <p v-if="qrOriginWarn" class="qr-warn">
+          当前通过 localhost 打开本页，手机访问不到该地址。请改用本机局域网地址访问登录页，或在该地址基础上重新生成二维码。
+        </p>
+      </div>
+
+      <!-- 邮箱验证码登录面板：验证码真实发送到邮箱，仅支持已绑定账号的邮箱 -->
+      <div v-show="loginMode === 'email'" class="email-panel">
+        <el-form
+          ref="emailFormRef"
+          :model="emailForm"
+          :rules="emailRules"
+          size="large"
+          class="login-form"
+          @keyup.enter="handleEmailLogin"
+        >
+          <el-form-item prop="email">
+            <el-input
+              v-model="emailForm.email"
+              placeholder="请输入已绑定账号的邮箱"
+              :prefix-icon="Message"
+              clearable
+            />
+          </el-form-item>
+
+          <el-form-item prop="code">
+            <div class="captcha-row">
+              <el-input
+                v-model="emailForm.code"
+                placeholder="请输入 6 位邮箱验证码"
+                :prefix-icon="Key"
+                maxlength="6"
+                clearable
+              />
+              <el-button
+                class="code-btn"
+                :disabled="emailCountdown > 0"
+                :loading="sending"
+                @click="handleSendCode"
+              >
+                {{ emailCountdown > 0 ? `${emailCountdown}s 后重发` : '获取验证码' }}
+              </el-button>
+            </div>
+          </el-form-item>
+
+          <el-form-item>
+            <el-button
+              type="primary"
+              class="login-btn"
+              :loading="emailLoading"
+              @click="handleEmailLogin"
+            >
+              {{ emailLoading ? '登录中...' : '登 录' }}
+            </el-button>
+          </el-form-item>
+        </el-form>
+
+        <p class="email-tip">
+          验证码会真实发送到该邮箱，5 分钟内有效、仅可使用一次；当前仅支持已绑定系统账号的邮箱。
+        </p>
+      </div>
+
       <!-- 底部提示 -->
       <div class="footer">
         登录即代表同意《用户服务协议》与《隐私政策》
@@ -92,18 +210,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { login, getCaptcha } from '@/api/auth'
+import { login, getCaptcha, getQrTicket, getQrStatus, sendEmailCode, loginByEmail } from '@/api/auth'
+// 二维码渲染：把后端下发的扫码地址画成二维码图片，纯前端完成，不依赖第三方图片接口
+import QRCode from 'qrcode'
 import {
   User,
   Lock,
   Key,
   View,
   Hide,
-  Compass
+  Compass,
+  Refresh,
+  Loading,
+  Message
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -215,6 +338,284 @@ const handleLogin = async () => {
     }
   })
 }
+
+/* ==================== 扫码登录 ==================== */
+type QrState = 'PENDING' | 'SCANNED' | 'CONFIRMED' | 'CANCELED' | 'EXPIRED'
+
+// 当前登录方式：账号表单 / 扫码 / 邮箱验证码
+const loginMode = ref<'account' | 'qrcode' | 'email'>('account')
+// 二维码图片（dataURL，由 qrcode 库在前端生成）
+const qrImg = ref('')
+// 二维码是否正在生成
+const qrLoading = ref(false)
+// 二维码状态
+const qrStatus = ref<QrState>('PENDING')
+// 剩余有效秒数（后端下发 TTL，前端本地倒计时）
+const qrRemain = ref(0)
+// 二维码实际指向的地址（供手机访问与排查）
+const qrScanUrl = ref('')
+// 地址是否为回环地址（手机访问不到，需要提示用户换成局域网地址）
+const qrOriginWarn = ref(false)
+
+// 当前票据号与两个定时器（轮询、倒计时）
+let currentTicket = ''
+let pollTimer: number | null = null
+let countTimer: number | null = null
+
+// 轮询间隔：2 秒；倒计时 1 秒
+const POLL_INTERVAL = 2000
+
+/** 停止轮询与倒计时（切换方式、登录成功、页面卸载时都要清掉，避免定时器泄漏） */
+const stopQrTasks = () => {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
+  }
+  if (countTimer !== null) {
+    window.clearInterval(countTimer)
+    countTimer = null
+  }
+}
+
+/** 判断地址是否指向本机回环地址（手机无法访问） */
+const isLoopbackUrl = (url: string): boolean => {
+  try {
+    const host = new URL(url).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 计算二维码内容
+ * 用局域网 IP 打开登录页时以当前 origin 为准（永远与用户实际访问地址一致，IP 变了也不用改配置）；
+ * 用 localhost 打开时才采用后端下发的地址，此时若后端也未配置局域网地址会给出提示。
+ */
+const buildScanUrl = (ticket: string, backendUrl: string): string => {
+  const host = window.location.hostname
+  if (host && host !== 'localhost' && host !== '127.0.0.1') {
+    return `${window.location.origin}/scan-login?ticket=${ticket}`
+  }
+  return backendUrl || `${window.location.origin}/scan-login?ticket=${ticket}`
+}
+
+/** 生成二维码（首次进入扫码页签、失效后点击刷新都会调用） */
+const createQr = async () => {
+  stopQrTasks()
+  qrLoading.value = true
+  qrStatus.value = 'PENDING'
+  qrImg.value = ''
+  try {
+    const ticketVO = await getQrTicket()
+    currentTicket = ticketVO.ticket
+    const url = buildScanUrl(ticketVO.ticket, ticketVO.scanUrl)
+    qrScanUrl.value = url
+    qrOriginWarn.value = isLoopbackUrl(url)
+    qrImg.value = await QRCode.toDataURL(url, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M'
+    })
+    qrRemain.value = ticketVO.expireSeconds || 300
+    startCountdown()
+    startPolling()
+  } catch {
+    // 出码失败（后端未启动 / 网络异常）：按失效处理，点击可重试
+    qrStatus.value = 'EXPIRED'
+  } finally {
+    qrLoading.value = false
+  }
+}
+
+/** 本地倒计时：归零即认定二维码过期，不必等后端清理 Redis */
+const startCountdown = () => {
+  countTimer = window.setInterval(() => {
+    qrRemain.value -= 1
+    if (qrRemain.value <= 0) {
+      stopQrTasks()
+      qrStatus.value = 'EXPIRED'
+    }
+  }, 1000)
+}
+
+/** 轮询票据状态：确认后取走后端一次性下发的结果并自动登录 */
+const startPolling = () => {
+  pollTimer = window.setInterval(async () => {
+    if (!currentTicket) return
+    try {
+      const res = await getQrStatus(currentTicket)
+      if (res.status === 'CONFIRMED' && res.login) {
+        stopQrTasks()
+        qrStatus.value = 'CONFIRMED'
+        persistFromQr(res.login)
+        return
+      }
+      if (res.status === 'CANCELED' || res.status === 'EXPIRED') {
+        stopQrTasks()
+        qrStatus.value = res.status
+        return
+      }
+      qrStatus.value = res.status
+    } catch {
+      // 单次轮询失败（网络抖动）不终止轮询，继续等待下一次
+    }
+  }, POLL_INTERVAL)
+}
+
+/**
+ * 扫码登录结果落库并跳转
+ * 与账号登录保持完全一致的 key 与跳转规则，后端 RBAC 返回结构相同
+ */
+const persistFromQr = (res: any) => {
+  const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
+  const mainRole = (backendRoles[0] || '').toLowerCase()
+
+  if (!VALID_ROLES.includes(mainRole)) {
+    ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
+    qrStatus.value = 'EXPIRED'
+    return
+  }
+
+  localStorage.setItem('token', res.token)
+  localStorage.setItem('roles', JSON.stringify(backendRoles))
+  localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
+  localStorage.setItem('role', mainRole)
+  localStorage.setItem('username', res.userInfo?.name || '')
+  localStorage.setItem('department', res.userInfo?.department || '')
+  localStorage.setItem('className', res.userInfo?.className || '')
+
+  ElMessage.success('扫码登录成功，正在跳转...')
+  const redirect = (router.currentRoute.value.query.redirect as string) || '/'
+  router.push(redirect)
+}
+
+/* ==================== 邮箱验证码登录 ==================== */
+// 邮箱表单：邮箱 + 6 位验证码
+const emailForm = reactive({
+  email: '',
+  code: ''
+})
+const emailFormRef = ref<FormInstance>()
+// 验证码是否正在请求发送
+const sending = ref(false)
+// 登录请求中
+const emailLoading = ref(false)
+// 重发倒计时（秒），0 表示可以再次发送
+const emailCountdown = ref(0)
+let emailTimer: number | null = null
+
+const emailRules: FormRules = {
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] }
+  ],
+  code: [
+    { required: true, message: '请输入邮箱验证码', trigger: 'blur' },
+    { len: 6, message: '验证码为 6 位数字', trigger: 'blur' }
+  ]
+}
+
+/** 停止重发倒计时 */
+const stopEmailCountdown = () => {
+  if (emailTimer !== null) {
+    window.clearInterval(emailTimer)
+    emailTimer = null
+  }
+}
+
+/** 启动重发倒计时（时长以后端返回的 cooldownSeconds 为准） */
+const startEmailCountdown = (seconds: number) => {
+  stopEmailCountdown()
+  emailCountdown.value = seconds
+  emailTimer = window.setInterval(() => {
+    emailCountdown.value -= 1
+    if (emailCountdown.value <= 0) {
+      stopEmailCountdown()
+    }
+  }, 1000)
+}
+
+/**
+ * 发送邮箱验证码
+ * 后端通过真实 SMTP 发信，失败会直接报错（不会出现"假发送成功"）
+ */
+const handleSendCode = async () => {
+  if (!emailFormRef.value) return
+  try {
+    await emailFormRef.value.validateField('email')
+  } catch {
+    return
+  }
+  sending.value = true
+  try {
+    const res = await sendEmailCode(emailForm.email.trim())
+    startEmailCountdown(res?.cooldownSeconds || 60)
+    ElMessage.success(`验证码已发送至 ${res?.email || emailForm.email}`)
+  } catch {
+    // 请求拦截器已提示（邮箱未绑定账号 / 发信失败 / 发送过于频繁）
+  } finally {
+    sending.value = false
+  }
+}
+
+/**
+ * 邮箱验证码登录
+ * 成功后按与账号登录完全一致的 key 写入本地会话并跳转
+ */
+const handleEmailLogin = async () => {
+  if (!emailFormRef.value) return
+  await emailFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    emailLoading.value = true
+    try {
+      const res: any = await loginByEmail(emailForm.email.trim(), emailForm.code.trim())
+
+      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
+      const mainRole = (backendRoles[0] || '').toLowerCase()
+
+      if (!VALID_ROLES.includes(mainRole)) {
+        ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
+        emailForm.code = ''
+        return
+      }
+
+      localStorage.setItem('token', res.token)
+      localStorage.setItem('roles', JSON.stringify(backendRoles))
+      localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
+      localStorage.setItem('role', mainRole)
+      localStorage.setItem('username', res.userInfo?.name || emailForm.email)
+      localStorage.setItem('department', res.userInfo?.department || '')
+      localStorage.setItem('className', res.userInfo?.className || '')
+
+      ElMessage.success('登录成功，正在跳转...')
+      const redirect = (router.currentRoute.value.query.redirect as string) || '/'
+      router.push(redirect)
+    } catch {
+      // 请求拦截器已提示（验证码错误/过期），清空验证码便于重新输入
+      emailForm.code = ''
+    } finally {
+      emailLoading.value = false
+    }
+  })
+}
+
+/** 切换登录方式：进入扫码时出码，切到其他方式时停掉扫码定时器 */
+const switchLoginMode = (mode: 'account' | 'qrcode' | 'email') => {
+  if (loginMode.value === mode) return
+  loginMode.value = mode
+  if (mode === 'qrcode') {
+    createQr()
+  } else {
+    stopQrTasks()
+  }
+}
+
+// 离开登录页时清理所有定时器
+onUnmounted(() => {
+  stopQrTasks()
+  stopEmailCountdown()
+})
 </script>
 
 <style scoped>
@@ -421,6 +822,159 @@ const handleLogin = async () => {
   color: #606266;
 }
 
+/* 登录方式页签 */
+.login-tabs {
+  display: flex;
+  margin-bottom: 22px;
+  padding: 4px;
+  background: #f2f7fd;
+  border-radius: 10px;
+}
+
+.tab-item {
+  flex: 1;
+  padding: 9px 0;
+  font-size: 14px;
+  color: #606266;
+  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.tab-item:hover {
+  color: #4dabf7;
+}
+
+.tab-item.active {
+  color: #fff;
+  font-weight: 600;
+  background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
+  box-shadow: 0 4px 12px rgba(77, 171, 247, 0.3);
+}
+
+/* 扫码登录面板 */
+.qr-panel {
+  padding: 4px 0 8px;
+  text-align: center;
+}
+
+.qr-box {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 14px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.qr-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.qr-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  font-size: 13px;
+  color: #909399;
+  cursor: pointer;
+  background: #fafbfc;
+}
+
+.qr-placeholder .el-icon {
+  font-size: 26px;
+  color: #c0c4cc;
+}
+
+/* 已扫码蒙层：盖住二维码，提示到手机上确认 */
+.qr-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #303133;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.qr-mask .el-icon {
+  font-size: 26px;
+  color: #4dabf7;
+}
+
+.qr-tip {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #303133;
+}
+
+.qr-url {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #909399;
+  word-break: break-all;
+}
+
+.qr-warn {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #b26a00;
+  text-align: left;
+  background: #fff8e6;
+  border-radius: 8px;
+}
+
+/* 邮箱验证码登录面板 */
+.email-panel {
+  padding: 4px 0 8px;
+}
+
+.code-btn {
+  flex-shrink: 0;
+  width: 118px;
+  height: 40px;
+  padding: 0;
+  font-size: 13px;
+  color: #2b8ae2;
+  background: #f2f9ff;
+  border-color: #cfe6fb;
+  border-radius: 8px;
+}
+
+.code-btn:hover:not(.is-disabled) {
+  color: #fff;
+  background: #4dabf7;
+  border-color: #4dabf7;
+}
+
+.code-btn.is-disabled {
+  color: #a8b6c4;
+  background: #f5f7fa;
+  border-color: #e4e7ed;
+}
+
+.email-tip {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
+}
+
 /* 响应式 */
 @media (max-width: 480px) {
   .login-card {
@@ -434,6 +988,11 @@ const handleLogin = async () => {
 
   .role-item {
     font-size: 11px;
+  }
+
+  .qr-box {
+    width: 180px;
+    height: 180px;
   }
 }
 </style>

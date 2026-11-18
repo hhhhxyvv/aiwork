@@ -142,3 +142,114 @@ export function logout() {
     }
   )
 }
+
+/* ==================== 扫码登录 ==================== */
+
+/** 二维码票据（PC 端生成二维码用） */
+export interface QrTicket {
+  ticket: string
+  /** 手机扫码打开的确认页地址（已携带 ticket 参数） */
+  scanUrl: string
+  expireSeconds: number
+  status: string
+}
+
+/** 扫码状态（PC 端轮询用） */
+export interface QrStatus {
+  status: 'PENDING' | 'SCANNED' | 'CONFIRMED' | 'CANCELED' | 'EXPIRED'
+  /** 仅 CONFIRMED 时返回，取走后不可再次获取 */
+  login?: LoginResult | null
+}
+
+/**
+ * 生成扫码登录二维码票据
+ * 真实后端: GET /api/auth/qrcode（免登录白名单）
+ */
+export function getQrTicket(): Promise<QrTicket> {
+  return request.get('/auth/qrcode') as any
+}
+
+/**
+ * 轮询扫码状态
+ * 真实后端: GET /api/auth/qrcode/status?ticket=xxx（免登录白名单）
+ */
+export function getQrStatus(ticket: string): Promise<QrStatus> {
+  return request.get('/auth/qrcode/status', { params: { ticket } }) as any
+}
+
+/**
+ * 手机端标记已扫码（打开确认页时调用）
+ * 真实后端: POST /api/auth/qrcode/scan（免登录白名单）
+ */
+export function markQrScanned(ticket: string) {
+  return request.post('/auth/qrcode/scan', { ticket })
+}
+
+/**
+ * 手机端确认登录（以手机端 Token 中的身份签发 PC 端 Token）
+ * 真实后端: POST /api/auth/qrcode/confirm（需 Token）
+ */
+export function confirmQrLogin(ticket: string) {
+  return request.post('/auth/qrcode/confirm', { ticket })
+}
+
+/**
+ * 手机端取消登录
+ * 真实后端: POST /api/auth/qrcode/cancel（需 Token）
+ */
+export function cancelQrLogin(ticket: string) {
+  return request.post('/auth/qrcode/cancel', { ticket })
+}
+
+/* ==================== 邮箱验证码登录 ==================== */
+
+/** 邮箱验证码发送结果 */
+export interface EmailCodeResult {
+  /** 脱敏后的收件邮箱 */
+  email: string
+  /** 验证码有效期（秒） */
+  expireSeconds: number
+  /** 重发间隔（秒） */
+  cooldownSeconds: number
+}
+
+/** 发码可选项：注册场景需要口令区分，并携带图形验证码 */
+export interface SendEmailCodeOptions {
+  /** login=登录发码（要求邮箱已绑定账号，默认）；register=注册发码（要求邮箱未被占用，且必须带图形验证码） */
+  scene?: 'login' | 'register'
+  /** 图形验证码标识 */
+  captchaKey?: string
+  /** 图形验证码内容 */
+  captchaCode?: string
+}
+
+/**
+ * 发送邮箱验证码（真实 SMTP 发信到邮箱）
+ * 真实后端: POST /api/auth/email/code（免登录白名单）
+ * 注意：同步等待 SMTP 发信完成，QQ 邮箱 SSL 握手 + 投递常需 5-20 秒，
+ * 因此单独放宽到 30 秒，避免用全局 10 秒超时误判为失败（邮件其实已发出）。
+ */
+export function sendEmailCode(
+  email: string,
+  options: SendEmailCodeOptions = {}
+): Promise<EmailCodeResult> {
+  return request.post(
+    '/auth/email/code',
+    {
+      email,
+      scene: options.scene || 'login',
+      captchaKey: options.captchaKey,
+      captchaCode: options.captchaCode
+    },
+    { timeout: 30000 }
+  ) as any
+}
+
+/**
+ * 邮箱验证码登录
+ * 真实后端: POST /api/auth/email/login（免登录白名单）
+ * 返回结构与账号密码登录一致：{ token, role, roles, permissions, userInfo }
+ */
+export function loginByEmail(email: string, code: string): Promise<LoginResult> {
+  return request.post('/auth/email/login', { email, code }) as any
+}

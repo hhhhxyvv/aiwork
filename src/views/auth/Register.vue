@@ -39,6 +39,48 @@
           <el-input v-model="form.confirmPassword" type="password" placeholder="再次确认密码" :prefix-icon="Lock" show-password />
         </el-form-item>
 
+        <!-- 邮箱验证：注册后该邮箱也可直接用于邮箱验证码登录 -->
+        <el-form-item prop="email">
+          <el-input
+            v-model="form.email"
+            placeholder="请输入邮箱，用于接收注册验证码"
+            :prefix-icon="Message"
+            clearable
+          />
+        </el-form-item>
+
+        <el-form-item prop="captchaCode">
+          <div class="code-row">
+            <el-input v-model="form.captchaCode" placeholder="图形验证码" maxlength="4" />
+            <img
+              v-if="captchaImg"
+              class="captcha-img"
+              :src="captchaImg"
+              alt="图形验证码，点击刷新"
+              title="看不清？点击刷新"
+              @click="refreshCaptcha"
+            />
+            <el-button
+              class="send-btn"
+              :disabled="countdown > 0 || sendingCode"
+              :loading="sendingCode"
+              @click="handleSendEmailCode"
+            >
+              {{ countdown > 0 ? countdown + 's 后重发' : '获取邮箱验证码' }}
+            </el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item prop="emailCode">
+          <el-input
+            v-model="form.emailCode"
+            placeholder="请输入邮箱收到的 6 位验证码"
+            maxlength="6"
+            :prefix-icon="Key"
+            clearable
+          />
+        </el-form-item>
+
         <!-- 1. 学生专属字段 -->
         <template v-if="form.role === 'student'">
           <el-form-item prop="studentId">
@@ -93,11 +135,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { register } from '@/api/auth'
+import { register, getCaptcha, sendEmailCode } from '@/api/auth'
 import {
   User,
   Lock,
@@ -105,12 +147,84 @@ import {
   OfficeBuilding,
   Collection,
   Reading,
-  Briefcase
+  Briefcase,
+  Message,
+  Key
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+
+/* ==================== 邮箱验证（注册发码 + 图形验证码） ==================== */
+const captchaKey = ref('')
+const captchaImg = ref('')
+const countdown = ref(0)
+const sendingCode = ref(false)
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+/** 刷新图形验证码（验证码一次性，每次校验后都换一张） */
+const refreshCaptcha = async () => {
+  try {
+    const res = await getCaptcha()
+    captchaKey.value = res.captchaKey
+    captchaImg.value = res.captchaImg
+    form.captchaCode = ''
+  } catch {
+    captchaImg.value = ''
+  }
+}
+
+/** 启动 60 秒重发倒计时 */
+const startCountdown = () => {
+  countdown.value = 60
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdownTimer = setInterval(() => {
+    countdown.value -= 1
+    if (countdown.value <= 0) {
+      if (countdownTimer) clearInterval(countdownTimer)
+      countdownTimer = null
+      countdown.value = 0
+    }
+  }, 1000)
+}
+
+/** 发送注册邮箱验证码（后端要求：图形验证码正确 + 邮箱未被占用） */
+const handleSendEmailCode = async () => {
+  if (!form.email) {
+    ElMessage.warning('请先输入邮箱')
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    ElMessage.warning('邮箱格式不正确')
+    return
+  }
+  if (!form.captchaCode) {
+    ElMessage.warning('请先输入图形验证码')
+    return
+  }
+  sendingCode.value = true
+  try {
+    await sendEmailCode(form.email, {
+      scene: 'register',
+      captchaKey: captchaKey.value,
+      captchaCode: form.captchaCode
+    })
+    ElMessage.success('验证码已发送，请查收邮箱（5 分钟内有效）')
+    startCountdown()
+  } catch {
+    // 错误提示由请求拦截器统一弹出，这里只负责刷新图形验证码
+  } finally {
+    sendingCode.value = false
+    // 图形验证码读后即删，无论成功失败都要换一张
+    refreshCaptcha()
+  }
+}
+
+onMounted(refreshCaptcha)
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
+})
 
 const roles = [
   { label: '学生', value: 'student' },
@@ -125,6 +239,10 @@ const form = reactive({
   realName: '',
   password: '',
   confirmPassword: '',
+  // 邮箱验证
+  email: '',
+  captchaCode: '',
+  emailCode: '',
   // 角色专属
   studentId: '',
   major: '',
@@ -170,6 +288,15 @@ const rules: FormRules = {
       trigger: 'blur'
     }
   ],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
+  ],
+  captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }],
+  emailCode: [
+    { required: true, message: '请输入邮箱验证码', trigger: 'blur' },
+    { len: 6, message: '邮箱验证码为 6 位数字', trigger: 'blur' }
+  ],
   studentId: [{ required: true, message: '学号不能为空', trigger: 'blur' }],
   major: [{ required: true, message: '专业不能为空', trigger: 'blur' }],
   teacherId: [{ required: true, message: '教工号不能为空', trigger: 'blur' }],
@@ -185,12 +312,13 @@ const handleRegister = async () => {
     if (!valid) return
     loading.value = true
     try {
-      // 调用真实后端注册（RegisterDTO 仅接收 username/password/role_code 三个字段，
-      // 学号/院系等扩展信息由后端学生画像模块维护，注册时不传）
+      // 调用真实后端注册：后端会校验邮箱验证码，通过后把邮箱写入账号
       await register({
         username: form.username,
         password: form.password,
-        role_code: form.role
+        role_code: form.role,
+        email: form.email,
+        email_code: form.emailCode
       })
 
       // 注册成功后暂存用户名与角色，跳回登录页自动填充
@@ -325,6 +453,39 @@ const handleRegister = async () => {
   border-radius: 10px;
   background: linear-gradient(135deg, #74c0fc 0%, #4dabf7 100%);
   transition: all 0.25s;
+}
+
+/* 邮箱验证行：图形验证码输入 + 图片 + 发码按钮 */
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.code-row .el-input {
+  flex: 1 1 auto;
+  min-width: 90px;
+}
+
+.captcha-img {
+  flex: 0 0 96px;
+  width: 96px;
+  height: 40px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  cursor: pointer;
+  object-fit: cover;
+  background: #f4f6fa;
+}
+
+.send-btn {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #4dabf7;
+  border-color: #a5d4f7;
 }
 
 .submit-btn:hover {

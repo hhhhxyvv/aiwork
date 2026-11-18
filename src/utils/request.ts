@@ -47,7 +47,10 @@ request.interceptors.response.use(
       ElMessage.error('登录已过期，请重新登录')
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
-      window.location.href = '/login'
+      // 扫码确认页例外：手机端 Token 过期时由页面自己回到账号表单，整页跳转会把扫码流程打断
+      if (!window.location.pathname.startsWith('/scan-login')) {
+        window.location.href = '/login'
+      }
       return Promise.reject(new Error(res.message || '登录已过期'))
     }
 
@@ -61,7 +64,10 @@ request.interceptors.response.use(
       ElMessage.error('登录已失效，请重新登录')
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
-      window.location.href = '/login'
+      // 扫码确认页例外：Token 过期时由页面自己回到账号表单，不打断扫码流程
+      if (!window.location.pathname.startsWith('/scan-login')) {
+        window.location.href = '/login'
+      }
     } else if (error.response && error.response.status === 403) {
       // HTTP 403：已登录但无权限（后端 RBAC 拦截）——只提示后端返回的无权限信息，严禁跳转登录页
       ElMessage.error(error.response.data?.message || '没有操作权限，请联系管理员')

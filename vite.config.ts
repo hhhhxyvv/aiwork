@@ -12,6 +12,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 监听所有网卡：手机必须能通过局域网 IP 访问登录页与扫码确认页。
+    // 只写 port 时 Vite 默认绑定 localhost（回环），手机访问 10.x.x.x:5173 会直接连接失败。
+    host: '0.0.0.0',
+    strictPort: true,
     open: true,
     proxy: {
       '/api': {

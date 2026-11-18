@@ -17,6 +17,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '注册', requiresAuth: false }
   },
   {
+    // 手机扫码后打开的确认页：票据号在 query.ticket 中，页面自身判断手机端是否已登录
+    path: '/scan-login',
+    name: 'ScanLogin',
+    component: () => import('@/views/auth/ScanLogin.vue'),
+    meta: { title: '扫码确认', requiresAuth: false }
+  },
+  {
     path: '/file-demo',
     name: 'FileDemo',
     component: () => import('@/views/FileDemoView.vue'),
