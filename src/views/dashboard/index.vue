@@ -1,5 +1,6 @@
 <template>
   <div class="dashboard-page">
+    <el-alert title="仅就业数据统计卡读取业务接口；其余指标、列表和快捷操作均为本地演示。" type="info" :closable="false" />
     <!-- 顶部欢迎栏与身份标识 -->
     <div class="welcome-banner">
       <div class="user-info">
@@ -15,7 +16,7 @@
     </div>
 
     <!-- 1. 学生视角工作台 -->
-    <div v-if="currentRole === 'student'" class="role-section">
+    <div v-if="hasPermission('student:profile:view')" class="role-section">
       <!-- 核心指标 -->
       <el-row :gutter="20" class="metric-row">
         <el-col :span="6">
@@ -65,7 +66,7 @@
         <template #header>
           <div class="card-header">
             <span>我的求职投递动态追踪</span>
-            <el-button type="primary" link @click="$router.push('/job')">去投递更多</el-button>
+            <el-button type="primary" link v-permission="'job:post:view'" @click="$router.push('/job')">去投递更多</el-button>
           </div>
         </template>
         <el-table :data="studentApplications" stripe>
@@ -88,7 +89,7 @@
     </div>
 
     <!-- 2. 辅导员视角工作台 -->
-    <div v-else-if="currentRole === 'counselor'" class="role-section">
+    <div v-if="hasPermission('internship:apply:audit')" class="role-section">
       <el-row :gutter="20" class="metric-row">
         <el-col :span="6">
           <el-card shadow="hover" class="metric-card alert-card">
@@ -137,7 +138,7 @@
         <template #header>
           <div class="card-header">
             <span>待审批学生实习申请（辅导员一审）</span>
-            <el-button type="primary" link @click="$router.push('/practice')">进入实习审批大厅</el-button>
+            <el-button type="primary" link v-permission="'internship:apply:audit'" @click="$router.push('/practice')">进入实习审批大厅</el-button>
           </div>
         </template>
         <el-table :data="counselorPendingList">
@@ -148,8 +149,8 @@
           <el-table-column prop="submitTime" label="提交时间" width="130" />
           <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
-              <el-button type="success" size="small" @click="handlePass(row)">通过</el-button>
-              <el-button type="danger" size="small" plain @click="handleReject(row)">退回节点</el-button>
+              <el-button v-permission="'internship:apply:audit'" type="success" size="small" @click="handlePass(row)">通过</el-button>
+              <el-button v-permission="'internship:apply:audit'" type="danger" size="small" plain @click="handleReject(row)">退回节点</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -157,7 +158,7 @@
     </div>
 
     <!-- 3. 企业 HR 视角工作台 -->
-    <div v-else-if="currentRole === 'hr'" class="role-section">
+    <div v-if="hasPermission('resume:candidate:view')" class="role-section">
       <el-row :gutter="20" class="metric-row">
         <el-col :span="6">
           <el-card shadow="hover" class="metric-card">
@@ -206,7 +207,7 @@
         <template #header>
           <div class="card-header">
             <span>最新应聘候选人</span>
-            <el-button type="primary" link @click="$router.push('/job')">发布新校招岗位</el-button>
+            <el-button type="primary" link v-permission="'job:post:publish'" @click="$router.push('/job')">发布新校招岗位</el-button>
           </div>
         </template>
         <el-table :data="hrCandidateList">
@@ -225,8 +226,8 @@
           </el-table-column>
           <el-table-column label="快捷操作" width="180" fixed="right">
             <template #default>
-              <el-button type="primary" size="small">邀约面试</el-button>
-              <el-button type="info" size="small" plain>查看简历</el-button>
+              <el-button type="primary" size="small" v-permission="'resume:candidate:invite'">邀约面试</el-button>
+              <el-button type="info" size="small" plain v-permission="'resume:candidate:view'">查看简历</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -234,7 +235,7 @@
     </div>
 
     <!-- 4. 院系管理员视角工作台 -->
-    <div v-else class="role-section">
+    <div v-if="hasPermission('stat:dashboard:view')" class="role-section">
       <el-row v-permission="'stat:dashboard:view'" :gutter="20" class="metric-row">
         <el-col :span="6">
           <el-card shadow="hover" class="metric-card">
@@ -283,7 +284,7 @@
         <template #header>
           <div class="card-header">
             <span>全院就业数据统计</span>
-            <el-tag type="success">实时聚合</el-tag>
+            <el-tag :type="statsReady ? 'success' : 'info'">{{ statsReady ? '接口数据' : '数据未加载' }}</el-tag>
           </div>
         </template>
         <el-row :gutter="20">
@@ -358,10 +359,11 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDashboardStats } from '@/api/stat'
 import { hasPermission } from '@/utils/permission'
+import { userSession } from '@/store/user'
 import type { DashboardStats } from '@/api/types'
 
-const currentRole = ref(localStorage.getItem('role') || 'student')
-const username = ref(localStorage.getItem('username') || '用户')
+const currentRole = computed(() => (userSession.roles[0] || '').replace(/^ROLE_/i,'').toLowerCase())
+const username = computed(() => userSession.userInfo.realName || userSession.userInfo.username || userSession.userInfo.name || '用户')
 
 const roleConfig: Record<string, { text: string; tagType: '' | 'success' | 'warning' | 'danger' | 'info' }> = {
   student: { text: '在校学生', tagType: 'success' },
@@ -370,7 +372,7 @@ const roleConfig: Record<string, { text: string; tagType: '' | 'success' | 'warn
   admin: { text: '院系管理员', tagType: 'info' }
 }
 
-const roleText = computed(() => roleConfig[currentRole.value]?.text || '用户')
+const roleText = computed(() => roleConfig[currentRole.value]?.text || userSession.roles.join(' / ') || '未分配角色')
 const roleTagType = computed(() => roleConfig[currentRole.value]?.tagType || 'info')
 const currentDate = computed(() => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }))
 
@@ -428,19 +430,14 @@ const adminMajorStats = ref([
 ])
 
 // ================= 就业数据大屏统计（GET /api/stat/dashboard） =================
-// 默认值即本地兜底数据，接口成功后自动替换为真实统计
+// 统计未加载时显示零值与明确状态，不以演示数字冒充接口结果。
+const statsReady = ref(false)
 const stats = ref<DashboardStats>({
-  employmentRate: 84.2,
-  totalGraduates: 355,
-  employedCount: 301,
-  industryDistribution: [
-    { name: '互联网/软件', value: 128 },
-    { name: '智能制造', value: 54 },
-    { name: '金融服务', value: 47 },
-    { name: '教育科研', value: 38 },
-    { name: '其他行业', value: 34 }
-  ],
-  salaryStats: { avgSalary: 8600, maxSalary: 25000, minSalary: 4500 }
+  employmentRate: 0,
+  totalGraduates: 0,
+  employedCount: 0,
+  industryDistribution: [],
+  salaryStats: { avgSalary: 0, maxSalary: 0, minSalary: 0 }
 })
 
 onMounted(async () => {
@@ -449,8 +446,9 @@ onMounted(async () => {
   if (!hasPermission('stat:dashboard:view')) return
   try {
     stats.value = await getDashboardStats()
+    statsReady.value = true
   } catch {
-    // 请求拦截器已统一弹错，此处保留本地兜底数据，页面不空白
+    // 请求失败保持“数据未加载”状态。
   }
 })
 </script>

@@ -1,7 +1,8 @@
 <template>
   <div class="job-container">
+    <el-alert title="本页岗位、审核、发布、推送及投递操作均为本地演示，未写入业务数据库。" type="info" :closable="false" />
     <!-- ================= 1. 院系管理员视角：入校企业准入与安全风控审核 ================= -->
-    <div v-if="role === 'admin'" class="role-box">
+    <div v-if="hasPermission('job:post:audit')" class="role-box">
       <el-row :gutter="16" class="stat-cards">
         <el-col :span="6">
           <el-card shadow="hover">
@@ -58,8 +59,8 @@
           <el-table-column prop="applyDate" label="提交时间" width="120" align="center" />
           <el-table-column label="审核操作" width="180" fixed="right" align="center">
             <template #default="{ row }">
-              <el-button link type="success" @click="handleAdminApprove(row)">批准入校</el-button>
-              <el-button link type="danger" @click="handleAdminReject(row)">驳回</el-button>
+              <el-button v-permission="'job:post:audit'" link type="success" @click="handleAdminApprove(row)">批准入校</el-button>
+              <el-button v-permission="'job:post:audit'" link type="danger" @click="handleAdminReject(row)">驳回</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -67,7 +68,7 @@
     </div>
 
     <!-- ================= 2. 企业 HR 视角：校招岗位发布与管理 ================= -->
-    <div v-else-if="role === 'hr'" class="role-box">
+    <div v-if="hasAnyPermission(['job:post:publish','job:post:edit'])" class="role-box">
       <el-card shadow="hover">
         <div class="header-flex">
           <div>
@@ -98,10 +99,10 @@
           </el-table-column>
           <el-table-column label="操作" width="180" align="center">
             <template #default="{ row }">
-              <el-button v-permission="'job:post:audit'" link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleJobStatus(row)">
+              <el-button v-permission="'job:post:edit'" link :type="row.status === 1 ? 'warning' : 'success'" @click="toggleJobStatus(row)">
                 {{ row.status === 1 ? '暂停' : '恢复' }}
               </el-button>
-              <el-button v-permission="'job:post:audit'" link type="danger" @click="deleteJob(row)">下线</el-button>
+              <el-button v-permission="'job:post:edit'" link type="danger" @click="deleteJob(row)">下线</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -133,11 +134,11 @@
     </div>
 
     <!-- ================= 3. 辅导员/学生 视角：岗位大厅与内推 ================= -->
-    <div v-else class="role-box">
+    <div v-if="hasAnyPermission(['job:post:view','job:apply:submit','job:recommend:push'])" class="role-box">
       <el-card shadow="hover">
         <div class="header-flex">
-          <span class="section-title">{{ role === 'counselor' ? '校企合作优质内推岗位专区' : '校园招聘与实习岗位大厅' }}</span>
-          <el-tag v-if="role === 'counselor'" type="warning">辅导员模式：可一键推送至班级群</el-tag>
+          <span class="section-title">校园招聘与实习岗位大厅</span>
+          <el-tag v-if="hasPermission('job:recommend:push')" type="warning">辅导员模式：可一键推送至班级群</el-tag>
         </div>
         <el-table :data="publicJobList" stripe class="mt-4" style="width: 100%">
           <el-table-column prop="company" label="企业名称" width="180" />
@@ -148,8 +149,8 @@
           <el-table-column prop="location" label="工作地点" width="120" />
           <el-table-column label="操作" width="160" align="center">
             <template #default="{ row }">
-              <el-button v-if="role === 'counselor'" link type="primary" @click="pushToClass(row)">一键推给全班</el-button>
-              <el-button v-else link type="primary" @click="applyJob(row)">投递简历</el-button>
+              <el-button v-if="hasPermission('job:recommend:push')" link type="primary" @click="pushToClass(row)">一键推给全班</el-button>
+              <el-button v-permission="'job:apply:submit'" link type="primary" @click="applyJob(row)">投递简历</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -159,10 +160,11 @@
 </template>
 
 <script setup lang="ts">
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
-const role = ref(localStorage.getItem('role') || 'student')
 
 // 1. 管理员数据（薪资字段对齐新契约：minSalary / maxSalary 元/月）
 const adminAuditList = ref([

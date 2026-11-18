@@ -1,4 +1,5 @@
 <template>
+  <el-alert title="文件传输接口演示：当前业务后端尚未接入文件服务，上传、下载和历史记录依赖文件服务支持。" type="warning" :closable="false" />
   <div class="file-demo">
     <!-- 页头 -->
     <div class="page-header">
@@ -6,7 +7,7 @@
         <h2 class="page-title">文件传输演示中心</h2>
         <p class="page-desc">小文件批量并发上传 · 大文件切片断点续传 · 流式下载与 HTTP 206 断点下载</p>
       </div>
-      <el-button :icon="Back" @click="$router.push('/dashboard')">返回系统</el-button>
+      <el-button :icon="Back" @click="$router.push(getLandingPath())">返回系统</el-button>
     </div>
 
     <el-alert
@@ -18,7 +19,7 @@
     />
 
     <!-- ================= 模块一：小文件批量并发上传 ================= -->
-    <el-card shadow="never" class="module-card">
+    <el-card v-if="hasPermission('storage:upload')" shadow="never" class="module-card">
       <template #header>
         <div class="module-header">
           <span class="module-title">模块一：小文件批量并发上传</span>
@@ -39,7 +40,7 @@
       </el-upload>
 
       <div class="action-row">
-        <el-button
+        <el-button v-permission="'storage:upload'"
           type="primary"
           :icon="Promotion"
           :loading="batchUploading"
@@ -64,7 +65,7 @@
     </el-card>
 
     <!-- ================= 模块二：大文件切片与断点续传 ================= -->
-    <el-card shadow="never" class="module-card">
+    <el-card v-if="hasPermission('storage:upload')" shadow="never" class="module-card">
       <template #header>
         <div class="module-header">
           <span class="module-title">模块二：大文件切片与断点续传</span>
@@ -100,7 +101,7 @@
           </div>
 
           <div class="action-row">
-            <el-button
+            <el-button v-permission="'storage:upload'"
               type="primary"
               :icon="VideoPlay"
               :loading="chunkUploading"
@@ -112,7 +113,7 @@
             <el-button type="warning" plain :icon="VideoPause" :disabled="!chunkUploading" @click="handlePause">
               暂停 / 模拟网络中断
             </el-button>
-            <el-button
+            <el-button v-permission="'storage:upload'"
               v-if="corruptedPending !== null"
               type="danger"
               :icon="Refresh"
@@ -167,7 +168,7 @@
     </el-card>
 
     <!-- ================= 模块三：流式下载与断点下载 ================= -->
-    <el-card shadow="never" class="module-card">
+    <el-card v-if="hasAnyStorageRead" shadow="never" class="module-card">
       <template #header>
         <div class="module-header">
           <span class="module-title">模块三：高并发流式下载与断点下载</span>
@@ -201,7 +202,7 @@
           controls-position="right"
           style="width: 100px"
         />
-        <el-button
+        <el-button v-permission="'storage:download'"
           type="primary"
           size="small"
           :icon="Download"
@@ -230,7 +231,7 @@
         </div>
       </div>
 
-      <el-table
+      <el-table v-if="hasPermission('storage:view')"
         v-loading="listLoading"
         :data="storageFiles"
         stripe
@@ -253,7 +254,7 @@
         <el-table-column prop="createTime" label="上传时间" width="165" />
         <el-table-column label="下载操作" width="230" align="center">
           <template #default="{ row }">
-            <el-button
+            <el-button v-permission="'storage:download'"
               size="small"
               type="primary"
               :icon="Download"
@@ -262,7 +263,7 @@
             >
               普通下载
             </el-button>
-            <el-button
+            <el-button v-permission="'storage:download'"
               size="small"
               type="success"
               :icon="Cpu"
@@ -276,13 +277,16 @@
       </el-table>
 
       <div class="dl-refresh">
-        <el-button size="small" :icon="Refresh" :loading="listLoading" @click="fetchList">刷新文件列表</el-button>
+        <el-button v-permission="'storage:view'" size="small" :icon="Refresh" :loading="listLoading" @click="fetchList">刷新文件列表</el-button>
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
+import { hasPermission, getLandingPath } from '@/utils/permission'
+import { invalidatePermissions, refreshSession, clearSession } from '@/store/user'
+
 import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import SparkMD5 from 'spark-md5'
@@ -310,6 +314,7 @@ import {
 import type { StorageFile, StorageType } from '@/api/types'
 
 // ★演示点1：分片大小 5MB，分片序号即临时文件名（后端 merge 按序号排序重组）
+const hasAnyStorageRead = computed(() => hasPermission('storage:view') || hasPermission('storage:download'))
 const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB 分片
 // ★演示点3：206 断点下载每段 5MB
 const RANGE_SIZE = 5 * 1024 * 1024
@@ -335,6 +340,7 @@ const batchResults = ref<{ fileName: string; status: 'uploading' | 'success' | '
 
 // ★演示点2：多选文件一次性封装进 FormData，后端 thread pool 并行落盘
 const handleBatchUpload = async () => {
+  if (!hasPermission('storage:upload')) return
   const files = smallFileList.value.map((f) => f.raw as File).filter(Boolean)
   if (!files.length) return
   batchUploading.value = true
@@ -434,6 +440,7 @@ const repairing = ref(false)
 
 // ★演示点1+3：先 check 已传分片 → Blob.slice 切片 → 逐片 MD5 上传 → merge 合并
 const handleChunkUpload = async () => {
+  if (!hasPermission('storage:upload')) return
   if (!bigFile.value || !fileHash.value) return
   chunkUploading.value = true
   paused.value = false
@@ -450,6 +457,7 @@ const handleChunkUpload = async () => {
 
     // 2. 逐片上传：Blob.slice 切 5MB，携带 fileHash + chunkIndex（暂停在分片边界生效）
     for (let i = 0; i < chunkTotal.value; i++) {
+      if (!hasPermission('storage:upload')) return
       if (paused.value) {
         pushLog('已暂停（模拟网络中断），进度已保留，可点击「继续上传」断点续传', 'warning')
         return
@@ -490,6 +498,7 @@ const handleChunkUpload = async () => {
     // 3. 全部分片完成后请求合并
     // ★演示点1：全部分片到齐后请求合并，后端按序号用 RandomAccessFile 重组
     pushLog(`POST /api/storage/chunk/merge 请求合并 ${chunkTotal.value} 个分片...`)
+    if (!hasPermission('storage:upload')) return
     await mergeChunks({
       fileHash: fileHash.value,
       fileName: bigFile.value.name,
@@ -508,6 +517,7 @@ const handleChunkUpload = async () => {
 
 // ★演示点1：修复损坏 
 const repairCorruptedChunk = async () => {
+  if (!hasPermission('storage:upload')) return
   if (corruptedPending.value === null || chunkUploading.value) return
   const i = corruptedPending.value
   chunkUploading.value = true
@@ -566,6 +576,7 @@ const dl = reactive({
 })
 
 const fetchList = async () => {
+  if (!hasPermission('storage:view')) return
   listLoading.value = true
   try {
     storageFiles.value = await getStorageList()
@@ -603,6 +614,7 @@ const handleSelectionChange = (rows: StorageFile[]) => {
 }
 
 const concurrentDownload = async () => {
+  if (!hasPermission('storage:download')) return
   const files = selectedFiles.value
   if (!files.length) {
     ElMessage.warning('请先在表格中勾选要下载的文件')
@@ -618,6 +630,7 @@ const concurrentDownload = async () => {
   const queue = [...files]
   const worker = async () => {
     while (queue.length) {
+      if (!hasPermission('storage:download')) return
       const file = queue.shift()!
       const task = batchDl.tasks.find((t) => t.id === file.id)!
       task.status = 'downloading'
@@ -645,6 +658,7 @@ const concurrentDownload = async () => {
 
 // ★演示点4：普通下载 —— 一次请求整流，axios onDownloadProgress 回调实时进度
 const downloadNormal = async (row: StorageFile) => {
+  if (!hasPermission('storage:download')) return
   dl.active = true
   dl.mode = 'normal'
   dl.percent = 0
@@ -672,6 +686,7 @@ let rangeSession: { row: StorageFile; parts: Blob[]; start: number; total: numbe
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const downloadRange = async (row: StorageFile) => {
+  if (!hasPermission('storage:download')) return
   if (dl.active) return
   if (rangeSession && dlPaused.value) {
     ElMessage.warning('已有暂停中的断点下载会话，请先「继续下载」完成本次传输')
@@ -686,7 +701,7 @@ const downloadRange = async (row: StorageFile) => {
     // 1. 探测总大小：Range: bytes=0-0，从 Content-Range: bytes 0-0/{total} 解析
     dl.detail = '探测文件总大小（Range: bytes=0-0）...'
     // ★演示点3：先用 Range: bytes=0-0 探测文件总大小（从 Content-Range 解析）
-    const probe = await fetch(url, { headers: { Range: 'bytes=0-0' } })
+    const probe = await fetchRange(url, 'bytes=0-0')
     const contentRange = probe.headers.get('content-range')
     if (probe.status !== 206 || !contentRange) {
       await probe.body?.cancel()
@@ -712,12 +727,20 @@ const downloadRange = async (row: StorageFile) => {
   }
 }
 
+async function fetchRange(url: string, range: string) {
+  if (!hasPermission('storage:download')) throw new Error('没有下载权限')
+  const response = await fetch(url, {headers:{Range:range,Authorization:`Bearer ${localStorage.getItem('token') || ''}`}})
+  if (response.status === 401) clearSession()
+  if (response.status === 403) { invalidatePermissions(); await refreshSession(true); window.dispatchEvent(new Event('session-refreshed')) }
+  return response
+}
 // 分段下载主循环：bytes=start-end 每段返回 206；暂停在分段边界生效
 const runRangeLoop = async () => {
   if (!rangeSession) return
   const { row, total } = rangeSession
   const url = `/api/storage/download/${row.id}`
   while (rangeSession.start < total) {
+    if (!hasPermission('storage:download')) return
     if (dlPaused.value) {
       pushLog(
         `已暂停（已接收 ${formatSize(rangeSession.start)} / ${formatSize(total)}），点击「继续下载」从断点恢复`,
@@ -728,7 +751,7 @@ const runRangeLoop = async () => {
     const start = rangeSession.start
     const end = Math.min(start + RANGE_SIZE - 1, total - 1)
     // ★演示点3：按 5MB 分段请求 Range，后端返回 206，只传输该区间
-    const resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } })
+    const resp = await fetchRange(url, `bytes=${start}-${end}`)
     if (resp.status !== 206) {
       throw new Error(`分段请求返回状态码 ${resp.status}，非 HTTP 206`)
     }
@@ -751,6 +774,7 @@ const runRangeLoop = async () => {
 
 // 暂停 / 继续断点下载（暂停停在分段边界，进度保留在 rangeSession 中）
 const toggleRangePause = () => {
+  if (!hasPermission('storage:download')) return
   if (dl.mode !== 'range' || !rangeSession) return
   if (!dlPaused.value) {
     dlPaused.value = true

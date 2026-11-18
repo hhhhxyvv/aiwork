@@ -1,5 +1,6 @@
 <template>
   <div class="storage-container">
+    <el-alert title="存储介质展示演示：当前后端尚未接入文件服务接口，上传与历史记录需文件服务支持。" type="info" :closable="false" />
     <!-- ================= 1. 顶部操作与控制卡片 ================= -->
     <el-card shadow="never" class="panel-card">
       <template #header>
@@ -24,7 +25,7 @@
 
         <!-- 拖拽上传 -->
         <el-col :span="15">
-          <el-upload
+          <el-upload v-if="hasPermission('storage:upload')"
             class="upload-area"
             drag
             multiple
@@ -85,7 +86,7 @@
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="filteredRecords" stripe style="width: 100%">
+      <el-table v-if="hasPermission('storage:view')" v-loading="loading" :data="filteredRecords" stripe style="width: 100%">
         <el-table-column prop="id" label="记录 ID" width="120" />
         <el-table-column prop="fileName" label="原始文件名" min-width="200" show-overflow-tooltip />
         <el-table-column label="文件格式" width="100" align="center">
@@ -106,7 +107,7 @@
         <el-table-column label="存储路径 / 访问地址" min-width="300">
           <template #default="{ row }">
             <div class="path-cell">
-              <el-link
+              <el-link v-permission="'storage:download'"
                 v-if="row.filePath.startsWith('http')"
                 :href="row.filePath"
                 target="_blank"
@@ -127,6 +128,8 @@
 </template>
 
 <script setup lang="ts">
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
@@ -156,6 +159,7 @@ const filteredRecords = computed(() =>
 )
 
 const fetchList = async () => {
+  if (!hasPermission('storage:view')) return
   loading.value = true
   try {
     records.value = await getStorageList()
@@ -195,6 +199,7 @@ const copyPath = async (path: string) => {
 
 // ================= 自定义上传（走统一 request 实例，自动附带 storageType） =================
 const handleUpload = async (options: UploadRequestOptions) => {
+  if (!hasPermission('storage:upload')) return
   const mode = typeTagMap[storageType.value].label
   try {
     await uploadFile(options.file, storageType.value)

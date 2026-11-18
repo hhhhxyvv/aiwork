@@ -39,14 +39,15 @@
             <Expand v-else />
           </el-icon>
           <el-breadcrumb separator="/" class="breadcrumb">
-            <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item :to="{ path: getLandingPath() }">首页</el-breadcrumb-item>
             <el-breadcrumb-item>{{ currentRouteTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
 
         <div class="nav-right">
+          <el-button v-if="canAccessPath('/file-demo')" link type="primary" @click="router.push('/file-demo')">文件传输演示</el-button>
           <el-tag effect="dark" type="primary" class="role-badge">
-            {{ roleNameMap[currentRole] || '未知角色' }}
+            {{ userSession.roles.map(r => roleNameMap[r.replace(/^ROLE_/i, '').toLowerCase()] || r).join(' / ') || '未分配角色' }}
           </el-tag>
           <el-dropdown @command="handleCommand">
             <span class="user-profile">
@@ -79,7 +80,8 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { routes } from '@/router'
-import { hasPermission } from '@/utils/permission'
+import { canAccessPath, getLandingPath } from '@/utils/permission'
+import { userSession, clearSession } from '@/store/user'
 import {
   Compass,
   DataAnalysis,
@@ -101,32 +103,24 @@ const router = useRouter()
 // 折叠状态
 const isCollapse = ref(false)
 
-// 从 localStorage 读取用户信息
-const currentRole = computed(() => localStorage.getItem('role') || 'student')
-const currentUsername = ref(localStorage.getItem('username') || '测试同学')
+// 展示共享会话的用户信息
+const currentUsername = computed(() => userSession.userInfo.realName || userSession.userInfo.name || userSession.userInfo.username || '用户')
 
 // 角色名称映射
 const roleNameMap: Record<string, string> = {
   student: '学生',
   counselor: '辅导员',
   hr: '企业 HR',
-  admin: '院系管理员'
+  admin: '院系管理员',
+  permission_admin: '总权限管理员'
 }
 
-// 过滤出当前角色有权看到的菜单列表（从路由表读取）
+// 菜单只按服务器实际授权过滤
 const menuList = computed(() => {
   const layoutRoute = routes.find((r) => r.path === '/')
   if (!layoutRoute || !layoutRoute.children) return []
 
-  return layoutRoute.children.filter((item) => {
-    // 1) 优先兼容 meta.roles：声明了角色列表则必须包含当前角色
-    const itemRoles = (item.meta?.roles as string[]) || []
-    if (itemRoles.length > 0 && !itemRoles.includes(currentRole.value)) return false
-    // 2) 声明了 meta.permission：必须通过权限点校验（后端 RBAC）
-    const requiredPerm = item.meta?.permission as string | undefined
-    if (requiredPerm && !hasPermission(requiredPerm)) return false
-    return true
-  })
+  return layoutRoute.children.filter(item => !item.meta?.hidden && canAccessPath('/' + item.path))
 })
 
 // 当前激活菜单
@@ -144,8 +138,7 @@ const handleCommand = (command: string) => {
     })
       .then(() => {
         // 完整清理登录态与 RBAC 缓存（与 Login.vue 写入的 key 一一对应）
-        const keys = ['token', 'role', 'roles', 'permissions', 'username', 'department', 'className', 'userId', 'realName']
-        keys.forEach((k) => localStorage.removeItem(k))
+        clearSession()
         ElMessage.success('已安全退出')
         router.push('/login')
       })

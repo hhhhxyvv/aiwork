@@ -29,6 +29,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { canAccessPath } from '@/utils/permission'
 
 const route = useRoute()
 const isCollapse = ref(false)
@@ -46,7 +47,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('toggle-sidebar', handleToggle)
 })
 
-const menuList = [
+const menuItems = [
   { path: '/dashboard', title: '首页概览', icon: 'HomeFilled' },
   { path: '/resume', title: '简历中心', icon: 'Document' },
   { path: '/job', title: '岗位推荐', icon: 'Briefcase' },
@@ -55,6 +56,7 @@ const menuList = [
   { path: '/policy', title: '就业政策', icon: 'Reading' }
 ]
 
+const menuList = computed(() => menuItems.filter(item => canAccessPath(item.path)))
 const activeMenu = computed(() => route.path)
 </script>
 

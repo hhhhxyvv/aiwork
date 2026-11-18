@@ -17,7 +17,7 @@ export interface PageResult<T> {
 }
 
 // ============ 认证相关 ============
-export type UserRole = 'student' | 'counselor' | 'hr' | 'admin'
+export type UserRole = string
 
 /** 用户信息（新契约：department/className 替代原 deptId） */
 export interface UserInfo {

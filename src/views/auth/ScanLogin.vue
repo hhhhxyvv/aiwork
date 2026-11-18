@@ -120,6 +120,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { acceptLogin, clearSession, refreshSession, userSession } from '@/store/user'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -195,10 +196,7 @@ const isTokenExpired = (token: string): boolean => {
  * 清除手机端本地会话
  * 用于"换一个账号登录"或本地 Token 已失效，避免下次扫码仍被绑定到旧账号
  */
-const clearLocalSession = () => {
-  const keys = ['token', 'roles', 'permissions', 'role', 'username', 'department', 'className', 'userInfo']
-  keys.forEach((key) => localStorage.removeItem(key))
-}
+const clearLocalSession = () => { clearSession() }
 
 /**
  * 页面初始化：校验票据有效性并判断手机端是否已登录
@@ -217,7 +215,9 @@ onMounted(async () => {
   }
   const token = localStorage.getItem('token')
   if (token && !isTokenExpired(token)) {
-    displayName.value = localStorage.getItem('username') || '当前账号'
+    await refreshSession()
+    if (!localStorage.getItem('token')) { pageState.value = 'needLogin'; await fetchCaptcha(); return }
+    displayName.value = userSession.userInfo.realName || userSession.userInfo.username || '当前账号'
     pageState.value = 'confirm'
   } else {
     // 没有 Token 或 Token 已过期：清掉残留会话，回到账号表单
@@ -267,16 +267,7 @@ const handlePhoneLogin = async () => {
         captchaKey: form.captchaKey,
         captchaCode: form.captchaCode
       })
-      // 与 PC 登录页一致的落库方式，保证手机端后续请求（确认/取消）携带有效 Token
-      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
-      localStorage.setItem('token', res.token)
-      localStorage.setItem('roles', JSON.stringify(backendRoles))
-      localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
-      localStorage.setItem('role', (backendRoles[0] || '').toLowerCase())
-      localStorage.setItem('username', res.userInfo?.name || form.username)
-      localStorage.setItem('department', res.userInfo?.department || '')
-      localStorage.setItem('className', res.userInfo?.className || '')
-
+      await acceptLogin(res)
       displayName.value = res.userInfo?.name || form.username
       pageState.value = 'confirm'
       ElMessage.success('登录成功，请确认电脑端登录')

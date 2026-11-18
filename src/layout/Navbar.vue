@@ -13,7 +13,7 @@
 
     <div class="right">
       <!-- 文件传输演示页跳转入口 -->
-      <el-button link type="primary" class="demo-link" @click="router.push('/file-demo')">
+      <el-button v-if="canAccessPath('/file-demo')" link type="primary" class="demo-link" @click="router.push('/file-demo')">
         <el-icon style="margin-right: 4px"><Upload /></el-icon>文件传输演示
       </el-button>
       <el-dropdown @command="handleCommand">
@@ -37,6 +37,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { canAccessPath } from '@/utils/permission'
+import { userSession, clearSession } from '@/store/user'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { UserFilled } from '@element-plus/icons-vue'
@@ -45,11 +47,11 @@ const route = useRoute()
 const router = useRouter()
 
 // 从 localStorage 读取用户名
-const username = computed(() => localStorage.getItem('username') || '用户')
+const username = computed(() => userSession.userInfo.realName || userSession.userInfo.username || userSession.userInfo.name || '用户')
 
 // 院系与班级（新契约：department/className 替代原 deptId，为空时不展示）
-const department = computed(() => localStorage.getItem('department') || '')
-const className = computed(() => localStorage.getItem('className') || '')
+const department = computed(() => userSession.userInfo.department || '')
+const className = computed(() => userSession.userInfo.className || '')
 const deptClass = computed(() => [department.value, className.value].filter(Boolean).join(' · '))
 
 // 侧边栏折叠状态（与 Sidebar 共享，简单起见用自定义事件或 store；这里通过事件总线简易实现）
@@ -66,7 +68,7 @@ const handleCommand = async (command: string) => {
     await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
       type: 'warning'
     })
-    localStorage.clear()
+    clearSession()
     ElMessage.success('已退出登录')
     router.push('/login')
   } else if (command === 'profile') {

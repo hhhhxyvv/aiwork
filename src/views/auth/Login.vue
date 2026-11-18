@@ -217,6 +217,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { login, getCaptcha, getQrTicket, getQrStatus, sendEmailCode, loginByEmail } from '@/api/auth'
 // 二维码渲染：把后端下发的扫码地址画成二维码图片，纯前端完成，不依赖第三方图片接口
 import QRCode from 'qrcode'
+import { acceptLogin } from '@/store/user'
+import { getLandingPath } from '@/utils/permission'
 import {
   User,
   Lock,
@@ -231,8 +233,12 @@ import {
 
 const router = useRouter()
 
-// 系统支持的合法角色集合（与路由守卫 meta.roles / dashboard 四套工作台保持一致）
-const VALID_ROLES = ['student', 'counselor', 'hr', 'admin']
+// 所有登录方式使用服务器实时授权决定落点。
+const finishLogin = async (result: { token: string }) => {
+  await acceptLogin(result)
+  ElMessage.success('登录成功，正在跳转...')
+  await router.replace(getLandingPath())
+}
 
 // 表单数据（角色由后端根据账号密码查询返回，登录页不再选择）
 const form = reactive({
@@ -301,33 +307,7 @@ const handleLogin = async () => {
         captchaCode: form.captchaCode
       })
 
-      // 按项目现有解析方式读取后端 RBAC 字段：roles 优先，回退 role
-      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
-      const mainRole = (backendRoles[0] || '').toLowerCase()
-
-      // 后端角色不在系统支持映射中：提示并保持在登录页，不进入错误工作台
-      if (!VALID_ROLES.includes(mainRole)) {
-        ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
-        form.captchaCode = ''
-        fetchCaptcha()
-        return
-      }
-
-      // 存入 localStorage（对齐后端 userInfo 新契约：department / className 替代 deptId）
-      // RBAC：roles/permissions 数组以 JSON 持久化；role 保留 roles[0] 向后兼容老代码
-      localStorage.setItem('token', res.token)
-      localStorage.setItem('roles', JSON.stringify(backendRoles))
-      localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
-      localStorage.setItem('role', mainRole)
-      localStorage.setItem('username', res.userInfo?.name || form.username)
-      localStorage.setItem('department', res.userInfo?.department || '')
-      localStorage.setItem('className', res.userInfo?.className || '')
-
-      ElMessage.success('登录成功，正在跳转...')
-      // 复用现有跳转逻辑：/ 重定向到 /dashboard，由 dashboard 按真实角色渲染对应工作台；
-      // 带 redirect 参数时回跳原目标页（路由守卫 meta.roles 会做二次校验）
-      const redirect = (router.currentRoute.value.query.redirect as string) || '/'
-      router.push(redirect)
+      await finishLogin(res)
     } catch {
       // 请求拦截器已统一弹错（验证码错误/过期 400、密码错误、后端不可用等）
       // 登录失败自动刷新验证码并清空已输入的验证码
@@ -448,7 +428,7 @@ const startPolling = () => {
       if (res.status === 'CONFIRMED' && res.login) {
         stopQrTasks()
         qrStatus.value = 'CONFIRMED'
-        persistFromQr(res.login)
+        await persistFromQr(res.login)
         return
       }
       if (res.status === 'CANCELED' || res.status === 'EXPIRED') {
@@ -467,28 +447,7 @@ const startPolling = () => {
  * 扫码登录结果落库并跳转
  * 与账号登录保持完全一致的 key 与跳转规则，后端 RBAC 返回结构相同
  */
-const persistFromQr = (res: any) => {
-  const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
-  const mainRole = (backendRoles[0] || '').toLowerCase()
-
-  if (!VALID_ROLES.includes(mainRole)) {
-    ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
-    qrStatus.value = 'EXPIRED'
-    return
-  }
-
-  localStorage.setItem('token', res.token)
-  localStorage.setItem('roles', JSON.stringify(backendRoles))
-  localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
-  localStorage.setItem('role', mainRole)
-  localStorage.setItem('username', res.userInfo?.name || '')
-  localStorage.setItem('department', res.userInfo?.department || '')
-  localStorage.setItem('className', res.userInfo?.className || '')
-
-  ElMessage.success('扫码登录成功，正在跳转...')
-  const redirect = (router.currentRoute.value.query.redirect as string) || '/'
-  router.push(redirect)
-}
+const persistFromQr = async (res: { token: string }) => { await finishLogin(res) }
 
 /* ==================== 邮箱验证码登录 ==================== */
 // 邮箱表单：邮箱 + 6 位验证码
@@ -571,26 +530,7 @@ const handleEmailLogin = async () => {
     try {
       const res: any = await loginByEmail(emailForm.email.trim(), emailForm.code.trim())
 
-      const backendRoles: string[] = res.roles && res.roles.length > 0 ? res.roles : [res.role || '']
-      const mainRole = (backendRoles[0] || '').toLowerCase()
-
-      if (!VALID_ROLES.includes(mainRole)) {
-        ElMessage.error(`未能识别该账号的角色（${mainRole || '空'}），请联系管理员检查角色配置`)
-        emailForm.code = ''
-        return
-      }
-
-      localStorage.setItem('token', res.token)
-      localStorage.setItem('roles', JSON.stringify(backendRoles))
-      localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
-      localStorage.setItem('role', mainRole)
-      localStorage.setItem('username', res.userInfo?.name || emailForm.email)
-      localStorage.setItem('department', res.userInfo?.department || '')
-      localStorage.setItem('className', res.userInfo?.className || '')
-
-      ElMessage.success('登录成功，正在跳转...')
-      const redirect = (router.currentRoute.value.query.redirect as string) || '/'
-      router.push(redirect)
+      await finishLogin(res)
     } catch {
       // 请求拦截器已提示（验证码错误/过期），清空验证码便于重新输入
       emailForm.code = ''

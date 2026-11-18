@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
-import { hasPermission } from '@/utils/permission'
+import { canAccessPath, getLandingPath, pagePermissions } from '@/utils/permission'
+import { refreshSession, userSession, clearSession } from '@/store/user'
 
 // 路由记录
 export const routes: RouteRecordRaw[] = [
@@ -32,8 +33,9 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: Layout,
-    redirect: '/dashboard',
+    redirect: () => getLandingPath(),
     children: [
+      { path: 'pending-authorization', name: 'PendingAuthorization', component: () => import('@/views/auth/PendingAuthorization.vue'), meta: { title: '等待授权', requiresAuth: true, hidden: true } },
       {
         path: 'dashboard',
         name: 'Dashboard',
@@ -42,7 +44,6 @@ export const routes: RouteRecordRaw[] = [
           title: '首页概览',
           icon: 'HomeFilled',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'hr', 'admin']
         }
       },
       {
@@ -53,7 +54,6 @@ export const routes: RouteRecordRaw[] = [
           title: '简历中心',
           icon: 'Document',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'hr', 'admin']
         }
       },
       {
@@ -64,7 +64,6 @@ export const routes: RouteRecordRaw[] = [
           title: '岗位推荐',
           icon: 'Briefcase',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'hr', 'admin']
         }
       },
       {
@@ -75,7 +74,6 @@ export const routes: RouteRecordRaw[] = [
           title: '面试辅导',
           icon: 'ChatLineRound',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'admin'] // 企业HR不可见
         }
       },
       {
@@ -86,7 +84,6 @@ export const routes: RouteRecordRaw[] = [
           title: '实习实践',
           icon: 'OfficeBuilding',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'hr', 'admin']
         }
       },
       {
@@ -97,10 +94,9 @@ export const routes: RouteRecordRaw[] = [
           title: '就业政策',
           icon: 'Reading',
           requiresAuth: true,
-          roles: ['student', 'counselor', 'admin'] // 企业HR不可见
         }
       },
-      // ====== 新增：树形数据结构可视化（院系/专业管理，仅管理员可见） ======
+      // ====== 新增：树形数据结构可视化（院系/专业管理，按功能权限显示） ======
       {
         path: 'dept',
         name: 'Dept',
@@ -109,10 +105,9 @@ export const routes: RouteRecordRaw[] = [
           title: '院系专业',
           icon: 'SetUp',
           requiresAuth: true,
-          roles: ['admin'] // 仅院系管理员可见与访问
         }
       },
-      // ====== 新增：大数据存储中心（本地磁盘 / 数据库BLOB / 云OSS 演示，仅管理员可见） ======
+      // ====== 新增：大数据存储中心（本地磁盘 / 数据库BLOB / 云OSS 演示，按功能权限显示） ======
       {
         path: 'storage',
         name: 'StorageManagement',
@@ -121,10 +116,9 @@ export const routes: RouteRecordRaw[] = [
           title: '大数据存储中心',
           icon: 'FolderOpened',
           requiresAuth: true,
-          roles: ['admin'] // 仅院系管理员可见与访问
         }
       },
-      // ====== 新增：角色权限配置（RBAC 动态授权，仅管理员可见） ======
+      // ====== 新增：角色权限配置（RBAC 动态授权，按功能权限显示） ======
       {
         path: 'role',
         name: 'RolePermission',
@@ -133,7 +127,6 @@ export const routes: RouteRecordRaw[] = [
           title: '角色权限配置',
           icon: 'Key',
           requiresAuth: true,
-          roles: ['admin'] // 仅院系管理员可见与访问
         }
       }
     ]
@@ -141,13 +134,12 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/403',
     name: 'Forbidden',
-    component: () => import('@/views/auth/Login.vue'),
-    meta: { title: '无权访问', requiresAuth: false }
+    redirect: '/pending-authorization'
   },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    redirect: '/dashboard'
+    redirect: () => getLandingPath()
   }
 ]
 
@@ -157,37 +149,32 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 })
 })
 
-// 全局前置守卫：登录态 + 页面访问权限拦截
-router.beforeEach((to) => {
-  const token = localStorage.getItem('token')
-  const currentRole = localStorage.getItem('role') || 'student'
-
-  // 设置页面标题
-  if (to.meta.title) {
-    document.title = `${to.meta.title} - AI大学生就业服务智能体`
-  }
-
-  // 1. 未登录拦截
-  if (to.meta.requiresAuth && !token) {
-    return { path: '/login', query: { redirect: to.fullPath } }
-  }
-
-  // 2. 已登录防重回登录页
-  if (to.path === '/login' && token) {
-    return { path: '/' }
-  }
-
-  // 3. 角色路由权限拦截（防止手动在地址栏输入无权访问的 URL）
-  const allowedRoles = (to.meta.roles as string[]) || []
-  if (to.meta.requiresAuth && allowedRoles.length > 0 && !allowedRoles.includes(currentRole)) {
-    return { path: '/dashboard' } // 没权限就踢回首页概览
-  }
-
-  // 4. 权限点拦截（后端 RBAC：路由声明了 meta.permission 时必须通过权限校验）
-  const requiredPerm = to.meta.permission as string | undefined
-  if (to.meta.requiresAuth && requiredPerm && !hasPermission(requiredPerm)) {
-    return { path: '/dashboard' }
+// 每次切页先读取服务器当前授权；首页/待授权页都是稳定终点。
+router.beforeEach(async (to) => {
+  if (to.meta.title) document.title = `${to.meta.title} - AI大学生就业服务智能体`
+  if (to.meta.requiresAuth && !localStorage.getItem('token')) return { path: '/login' }
+  if (to.meta.requiresAuth || (to.path === '/login' && localStorage.getItem('token'))) {
+    await refreshSession()
+    if (!localStorage.getItem('token')) return to.path === '/login' ? true : { path: '/login' }
+    if (to.path === '/login') return getLandingPath()
+    if (to.path === '/pending-authorization' && getLandingPath() !== to.path) return getLandingPath()
+    if (pagePermissions[to.path] && !canAccessPath(to.path)) return getLandingPath()
   }
 })
 
+// 窗口回到前台及拦截器刷新会话后，撤销当前页面访问权。
+async function syncCurrentAccess() {
+  await refreshSession()
+  const current = router.currentRoute.value
+  if (current.meta.requiresAuth && !localStorage.getItem('token')) { await router.replace('/login'); return }
+  if (current.meta.requiresAuth && pagePermissions[current.path] && !canAccessPath(current.path)) await router.replace(getLandingPath())
+  else if (current.path === '/pending-authorization' && userSession.ready && getLandingPath() !== current.path) await router.replace(getLandingPath())
+}
+window.addEventListener('focus', () => { if (localStorage.getItem('token')) void syncCurrentAccess() })
+window.addEventListener('session-refreshed', () => {
+  const current = router.currentRoute.value
+  if (current.meta.requiresAuth && pagePermissions[current.path] && !canAccessPath(current.path)) void router.replace(getLandingPath())
+})
+window.addEventListener('storage', (event) => { if (event.key === 'token') { clearSession(false); void syncCurrentAccess() } })
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && localStorage.getItem('token')) void syncCurrentAccess() })
 export default router

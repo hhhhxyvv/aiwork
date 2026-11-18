@@ -1,5 +1,6 @@
 <template>
   <div class="practice-page">
+    <el-alert title="本页申请、审批、日志与评价均为本地演示，操作不保存到业务数据库。" type="info" :closable="false" />
     <div class="page-header">
       <div>
         <h2 class="title">实习实践协同管理</h2>
@@ -7,19 +8,19 @@
       </div>
       <div class="header-actions">
         <!-- 学生才显示申报按钮 -->
-        <el-button v-if="currentRole === 'student'" v-permission="'internship:apply:submit'" type="primary" @click="applyDialogVisible = true">
+        <el-button v-if="hasPermission('internship:apply:submit')" type="primary" @click="applyDialogVisible = true">
           <el-icon><Plus /></el-icon> 提交新的实习申请
         </el-button>
         <!-- 角色标签 -->
-        <el-tag size="large" effect="plain">当前视角：{{ roleNames[currentRole] }}</el-tag>
+        <el-tag size="large" effect="plain">当前视角：按已授予的功能显示</el-tag>
       </div>
     </div>
 
     <!-- 顶部标签页切换 -->
     <el-tabs v-model="activeTab" class="practice-tabs">
-      <el-tab-pane label="实习申请与审批流" name="applyFlow">
+      <el-tab-pane v-if="hasAnyPermission(['internship:apply:view','internship:apply:submit','internship:apply:audit'])" label="实习申请与审批流" name="applyFlow">
         <!-- 辅导员/管理员视角：审批大厅 -->
-        <div v-if="currentRole === 'counselor' || currentRole === 'admin'" class="approval-panel">
+        <div v-if="hasPermission('internship:apply:audit')" class="approval-panel">
           <el-card shadow="never">
             <template #header>
               <div class="panel-header">
@@ -49,7 +50,7 @@
         </div>
 
         <!-- 学生视角：我的申报与进度轴 -->
-        <div v-else-if="currentRole === 'student'" class="student-apply-panel">
+        <div v-if="hasPermission('internship:apply:view')" class="student-apply-panel">
           <el-card shadow="never">
             <template #header>
               <div class="panel-header">
@@ -79,7 +80,7 @@
         </div>
 
         <!-- 企业 HR 视角：企业接收实习生名单 -->
-        <div v-else class="hr-panel">
+        <div v-if="hasPermission('internship:apply:view')" class="hr-panel">
           <el-card shadow="never">
             <template #header>
               <span>本公司在岗实习生管理</span>
@@ -100,18 +101,18 @@
       </el-tab-pane>
 
       <!-- 第二标签页：实习周报日志 -->
-      <el-tab-pane label="实习日志与周报批阅" name="logReport">
+      <el-tab-pane v-if="hasAnyPermission(['internship:log:view','internship:log:submit','internship:log:review'])" label="实习日志与周报批阅" name="logReport">
         <el-card shadow="never">
           <template #header>
             <div class="panel-header">
               <span>实习日志互动记录</span>
-              <el-button v-if="currentRole === 'student'" type="primary" size="small" @click="logDialogVisible = true">
+              <el-button v-if="hasPermission('internship:log:submit')" type="primary" size="small" @click="logDialogVisible = true">
                 填写本周实习日志
               </el-button>
             </div>
           </template>
 
-          <div v-for="log in logList" :key="log.id" class="log-card">
+          <div v-for="log in (hasPermission('internship:log:view') ? logList : [])" :key="log.id" class="log-card">
             <div class="log-top">
               <span class="log-week">{{ log.weekTitle }}（{{ log.author }}）</span>
               <span class="log-date">{{ log.date }}</span>
@@ -126,10 +127,10 @@
               </div>
               <div v-if="log.reply" class="reply-content">{{ log.reply }}</div>
               <div v-else class="no-reply">
-                <span v-if="currentRole !== 'counselor'">暂无批阅留言</span>
+                <span v-if="!hasPermission('internship:log:review')">暂无批阅留言</span>
                 <div v-else class="reply-box">
                   <el-input v-model="log.draftReply" placeholder="请输入辅导员指导留言..." size="small" />
-                  <el-button type="primary" size="small" @click="submitReply(log)">留言</el-button>
+                  <el-button v-permission="'internship:log:review'" type="primary" size="small" @click="submitReply(log)">留言</el-button>
                 </div>
               </div>
             </div>
@@ -138,17 +139,17 @@
       </el-tab-pane>
 
       <!-- 第三标签页：三方综合评分汇总 -->
-      <el-tab-pane label="校企三方综合评价汇总" name="evaluation">
+      <el-tab-pane v-if="hasAnyPermission(['internship:evaluate:view','internship:evaluate:submit'])" label="校企三方综合评价汇总" name="evaluation">
         <el-card shadow="never">
           <template #header>
             <div class="panel-header">
               <span>实习综合评分汇总（学生自评 20% + 企业评价 50% + 学院评定 30%）</span>
-              <el-button v-if="currentRole === 'hr'" v-permission="'internship:evaluate:submit'" type="warning" size="small" @click="scoreDialogVisible = true">
+              <el-button v-if="hasPermission('internship:evaluate:submit')" type="warning" size="small" @click="scoreDialogVisible = true">
                 企业导师评分入口
               </el-button>
             </div>
           </template>
-          <el-table :data="evaluationData" stripe>
+          <el-table v-if="hasPermission('internship:evaluate:view')" :data="evaluationData" stripe>
             <el-table-column prop="studentName" label="学生姓名" width="110" />
             <el-table-column prop="selfScore" label="学生自评(20%)" width="130">
               <template #default="{ row }">{{ row.selfScore || '-' }} 分</template>
@@ -193,29 +194,28 @@
       </el-form>
       <template #footer>
         <el-button @click="logDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleLogSubmit">提交周报</el-button>
+        <el-button v-permission="'internship:log:submit'" type="primary" @click="handleLogSubmit">提交周报</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
+import { ref, watchEffect } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-const currentRole = ref(localStorage.getItem('role') || 'student')
 const activeTab = ref('applyFlow')
+watchEffect(() => {
+  const tabs = [ ['applyFlow',['internship:apply:view','internship:apply:submit','internship:apply:audit']], ['logReport',['internship:log:view','internship:log:submit','internship:log:review']], ['evaluation',['internship:evaluate:view','internship:evaluate:submit']] ] as const
+  if (!tabs.some(([tab,codes]) => tab === activeTab.value && hasAnyPermission(codes))) activeTab.value = tabs.find(([,codes]) => hasAnyPermission(codes))?.[0] || ''
+})
 const applyDialogVisible = ref(false)
 const logDialogVisible = ref(false)
 const scoreDialogVisible = ref(false)
 
-const roleNames: Record<string, string> = {
-  student: '学生 (申报与写周报)',
-  counselor: '辅导员 (多级审批与批阅)',
-  hr: '企业导师 (评定与查看)',
-  admin: '院系管理员 (全院监管)'
-}
 
 // 审批数据
 const pendingList = ref([

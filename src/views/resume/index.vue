@@ -1,7 +1,10 @@
 <template>
   <div class="resume-container">
+    <el-alert title="候选人筛选和班级建档区为本地演示；本人简历上传、保存、下载与诊断连接业务接口。" type="info" :closable="false" />
+    <el-empty v-if="hasAnyPermission(['resume:candidate:invite','resume:candidate:reject']) && !hasPermission('resume:candidate:view')" description="已获得候选人操作权限；请配置候选人查看权限以选择记录。" />
+    <el-empty v-if="hasPermission('student:archive:remind') && !hasAnyPermission(['student:list:view','student:warning:view'])" description="已获得建档提醒权限；请配置学生列表或预警查看权限以选择对象。" />
     <!-- ================= 1. HR 视角：应聘简历筛选池 ================= -->
-    <div v-if="role === 'hr'" class="hr-resume-view">
+    <div v-if="hasPermission('resume:candidate:view')" class="hr-resume-view">
       <el-card shadow="hover">
         <template #header>
           <div class="header-box">
@@ -42,8 +45,8 @@
           <el-table-column label="简历操作" width="220" fixed="right" align="center">
             <template #default="{ row }">
               <el-button link type="primary" @click="previewPdf(row)">查看简历</el-button>
-              <el-button link type="success" :disabled="row.status !== 'pending'" @click="inviteInterview(row)">邀约</el-button>
-              <el-button link type="danger" :disabled="row.status !== 'pending'" @click="rejectResume(row)">淘汰</el-button>
+              <el-button v-permission="'resume:candidate:invite'" link type="success" :disabled="row.status !== 'pending'" @click="inviteInterview(row)">邀约</el-button>
+              <el-button v-permission="'resume:candidate:reject'" link type="danger" :disabled="row.status !== 'pending'" @click="rejectResume(row)">淘汰</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -51,7 +54,7 @@
     </div>
 
     <!-- ================= 2. 辅导员视角：班级建档率与督查（班级维度按字符串 className 筛选） ================= -->
-    <div v-else-if="role === 'counselor'" class="counselor-resume-view">
+    <div v-if="hasAnyPermission(['student:list:view','student:warning:view'])" class="counselor-resume-view">
       <el-card shadow="hover">
         <template #header>
           <div class="header-box">
@@ -80,15 +83,15 @@
           </el-table-column>
         </el-table>
 
-        <div class="counselor-footer">
+        <div v-if="hasPermission('student:warning:view')" class="counselor-footer">
           <p>全班 45 人，已完善简历 38 人，未建档 7 人。</p>
-          <el-button type="primary" plain @click="counselorRemind">一键督促未建档同学</el-button>
+          <el-button v-permission="'student:archive:remind'" type="primary" plain @click="counselorRemind">一键督促未建档同学</el-button>
         </div>
       </el-card>
     </div>
 
     <!-- ================= 3. 学生视角：在线智能写简历（内容统一整合进 parsedContent） ================= -->
-    <div v-else class="student-resume-view">
+    <div v-if="hasAnyPermission(['student:profile:view','student:resume:edit','student:resume:upload','student:resume:download','student:resume:diagnose'])" class="student-resume-view">
       <el-card shadow="hover">
         <template #header>
           <div class="header-box">
@@ -99,7 +102,7 @@
 
         <!-- 简历附件上传：从本地电脑选择 Word/PDF 文件，后端保存原件并自动解析内容 -->
         <div class="upload-section">
-          <el-upload
+          <el-upload v-if="hasPermission('student:resume:upload')"
             drag
             accept=".doc,.docx,.pdf"
             :show-file-list="false"
@@ -113,17 +116,17 @@
           </el-upload>
 
           <!-- 已上传原件信息条 -->
-          <div v-if="uploadedFile" class="uploaded-file-bar">
+          <div v-if="uploadedFile || hasPermission('student:resume:download')" class="uploaded-file-bar">
             <el-icon><Document /></el-icon>
-            <span class="file-name">{{ uploadedFile.name }}</span>
-            <el-tag size="small" type="success" effect="plain">原件已保存</el-tag>
-            <el-button link type="primary" size="small" :loading="downloading" @click="handleDownloadFile">
+            <span class="file-name">{{ uploadedFile?.name || '服务器保存的简历原件' }}</span>
+            <el-tag v-if="uploadedFile" size="small" type="success" effect="plain">原件已保存</el-tag>
+            <el-button v-permission="'student:resume:download'" link type="primary" size="small" :loading="downloading" @click="handleDownloadFile">
               下载原件
             </el-button>
           </div>
         </div>
 
-        <el-form label-width="90px">
+        <el-form v-if="hasAnyPermission(['student:profile:view','student:resume:edit'])" :disabled="!hasPermission('student:resume:edit')" label-width="90px">
           <el-form-item label="简历标题">
             <el-input v-model="resumeForm.title" placeholder="如：张同学-前端开发求职简历" />
           </el-form-item>
@@ -155,7 +158,7 @@
 
         <div class="student-actions">
           <el-button v-permission="'student:resume:edit'" type="primary" :loading="saving" @click="handleSaveResume">保存简历</el-button>
-          <el-button type="success" :loading="diagnosing" @click="handleDiagnose">AI 一键诊断</el-button>
+          <el-button v-permission="'student:resume:diagnose'" type="success" :loading="diagnosing" @click="handleDiagnose">AI 一键诊断</el-button>
         </div>
         <p class="tip">支持一键解析求职意向并使用 STAR 原则润色项目经验，教育/项目等经历统一保存在「简历内容」中。</p>
       </el-card>
@@ -192,6 +195,8 @@
 </template>
 
 <script setup lang="ts">
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled, Document } from '@element-plus/icons-vue'
@@ -199,7 +204,6 @@ import type { UploadRequestOptions } from 'element-plus'
 import { updateResume, diagnoseResume, uploadResume, getMyResume, downloadMyResume } from '@/api/resume'
 import type { ResumeDTO, DiagnosisResult } from '@/api/types'
 
-const role = ref(localStorage.getItem('role') || 'hr')
 const filterKeyword = ref('')
 
 // HR 应聘库
@@ -242,11 +246,10 @@ const counselorRemind = () => ElMessage.success('已给未完成简历的学生�
 /** 简历表单（新契约）：教育/项目等经历统一整合进 parsedContent，不再分散填写 */
 const resumeForm = reactive<ResumeDTO>({
   title: '我的求职简历',
-  parsedContent:
-    '【教育经历】软件工程专业 本科 2022-2026\n【项目经历】AI 就业服务智能体：负责前端架构与核心模块开发\n【技能特长】Vue3 / TypeScript / Element Plus\n【自我评价】学习能力强，具备良好的团队协作意识',
+  parsedContent: '',
   templateCode: 'classic'
 })
-const integrityScore = ref(72)
+const integrityScore = ref(0)
 
 // ================= 简历附件上传（本地 Word/PDF 文件 → 后端保存原件 + 解析文本） =================
 const uploading = ref(false)
@@ -255,6 +258,7 @@ const downloading = ref(false)
 const uploadedFile = ref<{ name: string } | null>(null)
 
 const handleUploadFile = async (options: UploadRequestOptions) => {
+  if (!hasPermission('student:resume:upload')) return
   const file = options.file as File
   uploading.value = true
   try {
@@ -274,6 +278,7 @@ const handleUploadFile = async (options: UploadRequestOptions) => {
 }
 
 const handleDownloadFile = async () => {
+  if (!hasPermission('student:resume:download')) return
   downloading.value = true
   try {
     const blob = (await downloadMyResume()) as Blob
@@ -292,7 +297,7 @@ const handleDownloadFile = async () => {
 
 // 进入页面时加载已保存的简历（仅学生角色，/resume/detail 需要 RESUME_SELF_VIEW 权限）
 onMounted(async () => {
-  if (role.value !== 'student') return
+  if (!hasPermission('student:profile:view')) return
   try {
     const detail = await getMyResume()
     if (detail) {
@@ -311,6 +316,7 @@ onMounted(async () => {
 
 const saving = ref(false)
 const handleSaveResume = async () => {
+  if (!hasPermission('student:resume:edit')) return
   if (!resumeForm.title) return ElMessage.warning('请填写简历标题')
   saving.value = true
   try {
@@ -327,6 +333,7 @@ const diagnosing = ref(false)
 const reportVisible = ref(false)
 const report = ref<DiagnosisResult | null>(null)
 const handleDiagnose = async () => {
+  if (!hasPermission('student:resume:diagnose')) return
   diagnosing.value = true
   try {
     // 新契约响应：reportId / targetJobName / overallScore / strengths / shortcomings / suggestions

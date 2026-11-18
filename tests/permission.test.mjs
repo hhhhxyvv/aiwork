@@ -15,7 +15,7 @@ const axios = require('axios')
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
 // These fixtures follow SystemController, RoleVO, PermissionVO and RolePermissionDTO.
-function harness({ failPermissions = false, failSave = false } = {}) {
+function harness({ failPermissions = false, failSave = false, sessionPermissions = ['sys:role:assign','sys:data-scope:assign'] } = {}) {
   const roles = [
     { id: 1, roleCode: 'ROLE_STUDENT', roleName: '学生', dataScope: 4,
       permissions: ['student:profile:view'], configured: true },
@@ -36,13 +36,14 @@ function harness({ failPermissions = false, failSave = false } = {}) {
   ))
   const storage = new Map([['token', 'test-token']])
   const context = vm.createContext({
-    console, setTimeout, clearTimeout,
+    console, setTimeout, clearTimeout, Event, AbortSignal,
+    fetch: async () => ({ok:true,status:200,json:async()=>({code:200,data:{roles:["ROLE_PERMISSION_ADMIN"],permissions:sessionPermissions,userInfo:{}}})}),
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
       removeItem: (key) => storage.delete(key)
     },
-    window: { location: { href: '' } }
+    window: { location: { href: '' }, dispatchEvent() {} }
   })
   function evaluate(source, filename, imports) {
     const js = ts.transpileModule(source, {
@@ -57,13 +58,16 @@ function harness({ failPermissions = false, failSave = false } = {}) {
     )
     return mod.exports
   }
+  const session = evaluate(readFileSync(join(root, 'src/store/user.ts'), 'utf8'), 'user.ts', { vue })
+  session.userSession.permissions = sessionPermissions
+  const permission = evaluate(readFileSync(join(root, 'src/utils/permission.ts'), 'utf8'), 'permission-utils.ts', { vue, '@/store/user': session })
   const client = evaluate(readFileSync(join(root, 'src/utils/request.ts'), 'utf8'),
-    'request.ts', { axios, 'element-plus': { ElMessage: messages } }).default
+    'request.ts', { axios, 'element-plus': { ElMessage: messages }, '@/store/user':session }).default
   // Only the external HTTP transport is replaced; real Axios and interceptors run.
   client.defaults.adapter = async (config) => {
     const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
     calls.push({ method: config.method, url: config.url, baseURL: config.baseURL,
-      authorization: config.headers.get('Authorization'), body })
+      authorization: config.headers.get('Authorization'), body, params:config.params })
     let data
     if (config.method === 'get' && config.url === '/system/roles') {
       data = plain(roles)
@@ -83,6 +87,19 @@ function harness({ failPermissions = false, failSave = false } = {}) {
       assert.ok(role, 'the saved role must exist in the backend list')
       role.permissions = [...body.permissions]
       data = null
+    } else if (config.method === 'get' && config.url === '/system/users') {
+      data = { records:[{id:91,username:'custom',realName:'自定义账号',status:1,roleCodes:['ROLE_ADVISOR']}],total:1,current:1,size:20 }
+    } else if (config.method === 'post' && config.url === '/system/roles') {
+      assert.deepEqual(Object.keys(body).sort(), ['roleCode','roleName'])
+      roles.push({id:88,...body,dataScope:4,permissions:[],configured:true}); data=null
+    } else if (config.method === 'post' && config.url === '/system/users/91/roles') {
+      assert.ok(Array.isArray(body.roleCodes));data=null
+    } else if (config.method === 'put' && /\/system\/roles\/\d+\/data-scope$/.test(config.url)) {
+      assert.ok([1,2,3,4].includes(body.dataScope));data=null
+    } else if (config.method === 'get' && config.url === '/system/users/91/student-scopes') {
+      data=[{department:'信息学院',className:'一班'}]
+    } else if (config.method === 'put' && config.url === '/system/users/91/student-scopes') {
+      assert.ok(Array.isArray(body.scopes));data=null
     } else {
       throw new Error(`Backend has no route ${config.method} ${config.url}`)
     }
@@ -95,7 +112,7 @@ function harness({ failPermissions = false, failSave = false } = {}) {
   const script = compileScript(descriptor, { id: 'permission-test' }).content
   const component = evaluate(script, 'role-page.ts', {
     vue, 'element-plus': { ElMessage: messages },
-    '@element-plus/icons-vue': { Key: {}, Folder: {} }, '@/api/permission': api
+    '@element-plus/icons-vue': { Key: {}, Folder: {} }, '@/api/permission': api, '@/store/user':session, '@/utils/permission':permission
   }).default
   const renderer = vue.createRenderer({
     patchProp() {}, insert() {}, remove() {}, setText() {}, setElementText() {},
@@ -110,7 +127,7 @@ function harness({ failPermissions = false, failSave = false } = {}) {
     setCheckedKeys: (keys) => { checked = [...keys] },
     getCheckedKeys: () => checked
   }
-  return { state, roles, calls, notices,
+  return { state, roles, calls, notices, api, session, client,
     ready: () => new Promise((resolve) => setImmediate(resolve)),
     checked: () => plain(checked),
     check: (keys) => { checked = [...keys] },
@@ -195,4 +212,70 @@ test('clearing all checkboxes sends an explicit empty array using the existing c
   assert.ok(save)
   assert.equal(save.url, '/system/roles/4/permissions')
   assert.deepEqual(save.body, { permissions: [] })
+})
+
+test('management APIs use secure users pagination, zero-permission role creation and explicit assignment contracts',async(t)=>{
+  const h=harness();t.after(h.close);await h.ready()
+  assert.equal(typeof h.api.getUsers,'function')
+  const users=await h.api.getUsers({keyword:'custom',pageNum:1,pageSize:20})
+  assert.equal(users.records[0].id,91)
+  assert.deepEqual(h.calls.at(-1).params,{keyword:'custom',pageNum:1,pageSize:20})
+  await h.api.createRole({roleCode:'ROLE_NEW',roleName:'新角色'})
+  assert.deepEqual(h.roles.at(-1).permissions,[])
+  await h.api.assignUserRoles(91,['ROLE_NEW'])
+  assert.deepEqual(h.calls.at(-1).body,{roleCodes:['ROLE_NEW']})
+  await h.api.updateRoleDataScope(88,2)
+  assert.deepEqual(h.calls.at(-1).body,{dataScope:2})
+  const scopes=await h.api.getStudentScopes(91)
+  assert.equal(scopes[0].className,'一班')
+  await h.api.updateStudentScopes(91,[])
+  assert.deepEqual(h.calls.at(-1).body,{scopes:[]})
+})
+test('saving authorization refreshes current shared session without logging in again',async(t)=>{
+  const h=harness();t.after(h.close);await h.ready()
+  await h.state.openAssignDialog(h.state.roleList[0]);h.check([])
+  await h.state.handleSave()
+  assert.ok(h.session.userSession.revision>0)
+})
+
+test('data-scope-only administrators load safe selectors without requesting the permission catalog',async(t)=>{
+  const h=harness({sessionPermissions:['sys:data-scope:assign']});t.after(h.close);await h.ready()
+  assert.ok(h.calls.some(c=>c.url==='/system/roles'))
+  assert.ok(h.calls.some(c=>c.url==='/system/users'))
+  await h.state.openAssignDialog(h.state.roleList[0])
+  assert.equal(h.calls.some(c=>c.url==='/system/permissions'),false)
+  await h.state.openUserScopes(h.state.userList[0])
+  assert.ok(Array.isArray(h.state.userScopes),'GET scopes must populate a list')
+  assert.equal(h.state.userScopes[0].className,'一班')
+  h.state.userScopes=[];await h.state.saveUserScopes()
+  assert.deepEqual(h.calls.find(c=>c.method==='put').body,{scopes:[]})
+})
+test('JSON and HTTP 403 responses refresh shared permissions and HTTP 401 removes every cached identity field',async(t)=>{
+  for(const type of ['json403','http403','http401']) {
+    const h=harness();t.after(h.close);await h.ready()
+    h.session.userSession.permissions=['student:resume:edit']
+    h.client.defaults.adapter=async config=>{
+      if(type==='json403')return {data:{code:403,message:'denied'},status:200,headers:{},config}
+      throw Object.assign(new Error('denied'),{response:{status:type==='http403'?403:401,data:{message:'denied'}}})
+    }
+    await assert.rejects(h.client.get('/protected'))
+    await h.ready()
+    assert.equal(h.session.userSession.permissions.includes('student:resume:edit'),false)
+    assert.ok(h.session.userSession.revision>0)
+    if(type==='http401')assert.deepEqual(Array.from(h.session.userSession.roles),[])
+  }
+})
+
+test('scope editor loads backend Result<List<StudentScopeDTO>> and saves the edited list in the PUT envelope',async(t)=>{
+  const h=harness();t.after(h.close);await h.ready()
+  await h.state.openUserScopes(h.state.userList[0])
+  assert.equal(h.state.userScopesReady,true)
+  assert.ok(Array.isArray(h.state.userScopes),'the scope editor must retain the backend array')
+  assert.deepEqual(plain(h.state.userScopes),[{department:'信息学院',className:'一班'}])
+  h.state.userScopes[0].className='二班'
+  h.state.userScopes.push({department:'软件学院',className:'三班'})
+  await h.state.saveUserScopes()
+  const save=h.calls.find(c=>c.method==='put' && c.url==='/system/users/91/student-scopes')
+  assert.deepEqual(save.body,{scopes:[{department:'信息学院',className:'二班'},{department:'软件学院',className:'三班'}]})
+  assert.equal(h.state.userScopesVisible,false)
 })

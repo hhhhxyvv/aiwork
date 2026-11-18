@@ -90,39 +90,11 @@ export function register(data: any) {
 
 /**
  * 获取当前用户信息
- * 真实后端: GET /api/auth/me
+ * 真实后端: GET /api/auth/info
  */
-export function getCurrentUser() {
-  return mockOrReal(
-    () => ({
-      id: Number(localStorage.getItem('userId')) || 1,
-      username: localStorage.getItem('username') || 'student',
-      name: localStorage.getItem('realName') || localStorage.getItem('username') || '同学',
-      realName: localStorage.getItem('realName') || '同学',
-      role: (localStorage.getItem('role') as any) || 'student',
-      avatar: '',
-      department: localStorage.getItem('department') || '',
-      className: localStorage.getItem('className') || ''
-    }),
-    async () => {
-      try {
-        const res: any = await request.get('/auth/me')
-        return res
-      } catch (err) {
-        // 后端若尚未提供 /auth/me，不阻断系统，平滑降级读取本地存储
-        return {
-          id: Number(localStorage.getItem('userId')) || 1,
-          username: localStorage.getItem('username') || 'student',
-          name: localStorage.getItem('realName') || localStorage.getItem('username') || '同学',
-          realName: localStorage.getItem('realName') || '同学',
-          role: (localStorage.getItem('role') as any) || 'student',
-          avatar: '',
-          department: localStorage.getItem('department') || '',
-          className: localStorage.getItem('className') || ''
-        }
-      }
-    }
-  )
+export async function getCurrentUser() {
+  const info: any = await request.get('/auth/info')
+  return info.userInfo || {}
 }
 
 /**

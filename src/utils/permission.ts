@@ -1,53 +1,36 @@
-// src/utils/permission.ts
-// 轻量级 RBAC 权限判断工具：不引入 Pinia，直接从 localStorage 读取登录时持久化的权限数据
-import type { Directive, DirectiveBinding } from 'vue'
-
-/** 万能权限点：拥有它即视为拥有全部权限（与后端权限点编码约定一致） */
-const ALL_PERMISSION = 'system:manage'
-
-/** 管理员角色编码：默认拥有全部权限 */
-const ADMIN_ROLE = 'admin'
-
-/** 读取当前用户的权限点列表（登录时由 Login.vue 以 JSON 存入 localStorage） */
-function getPermissions(): string[] {
-  try {
-    const raw = localStorage.getItem('permissions')
-    const list = raw ? JSON.parse(raw) : []
-    return Array.isArray(list) ? list.filter((p) => typeof p === 'string') : []
-  } catch {
-    return []
-  }
+import { watchEffect, type Directive, type DirectiveBinding } from 'vue'
+import { userSession } from '@/store/user'
+export function hasPermission(code: string): boolean { return userSession.permissions.includes(code) }
+export function hasAnyPermission(codes: readonly string[]): boolean { return codes.some(hasPermission) }
+export const pagePermissions: Record<string, string[]> = {
+  '/dashboard': ['stat:dashboard:view'],
+  '/resume': ['student:profile:view', 'student:resume:edit', 'student:resume:upload', 'student:resume:download', 'student:resume:diagnose', 'student:list:view', 'student:warning:view', 'resume:candidate:view', 'resume:candidate:invite', 'resume:candidate:reject', 'student:archive:remind'],
+  '/job': ['job:post:view', 'job:post:publish', 'job:post:edit', 'job:post:audit', 'job:apply:submit', 'job:recommend:push'],
+  '/interview': ['interview:practice:use', 'interview:stats:view', 'interview:candidate:view', 'interview:question:manage', 'student:warning:view', 'interview:candidate:review', 'interview:coaching:record', 'interview:supervision:send', 'interview:training:remind', 'interview:ledger:export'],
+  '/practice': ['internship:apply:view', 'internship:apply:submit', 'internship:apply:audit', 'internship:log:view', 'internship:log:submit', 'internship:log:review', 'internship:evaluate:view', 'internship:evaluate:submit'],
+  '/policy': ['policy:qa:use', 'policy:manage'],
+  '/dept': ['dept:manage'],
+  '/storage': ['storage:view', 'storage:upload', 'storage:download', 'storage:delete'],
+  '/role': ['sys:role:assign', 'sys:data-scope:assign'],
+  '/file-demo': ['storage:view', 'storage:upload', 'storage:download', 'storage:delete']
 }
-
-/** 读取当前角色编码（向后兼容单角色字段 role） */
-function getCurrentRole(): string {
-  return (localStorage.getItem('role') || '').trim().toLowerCase()
+export function canAccessPath(path: string): boolean {
+  if (path === '/pending-authorization') return true
+  return hasAnyPermission(pagePermissions[path] || [])
 }
-
-/**
- * 判断当前登录用户是否拥有指定权限点
- * - 角色为 admin，或权限列表包含 system:manage：视为拥有全部权限
- * - 否则精确匹配权限点编码
- */
-export function hasPermission(perm: string): boolean {
-  if (getCurrentRole() === ADMIN_ROLE) return true
-  const list = getPermissions()
-  if (list.includes(ALL_PERMISSION)) return true
-  return list.includes(perm)
+export function getLandingPath(): string {
+  if (canAccessPath('/role')) return '/role'
+  return Object.keys(pagePermissions).find(canAccessPath) || '/pending-authorization'
 }
-
-/**
- * v-permission 自定义指令：当前用户没有对应权限时，直接移除元素 DOM（按钮/入口不可见）
- * 用法：
- *   <el-button v-permission="'storage:delete'">删除</el-button>
- *   <el-button v-permission="['storage:edit', 'system:manage']">编辑</el-button>
- */
+const stops = new WeakMap<HTMLElement, () => void>()
+const originalDisplay = new WeakMap<HTMLElement, string>()
+function bind(el: HTMLElement, binding: DirectiveBinding<string | string[]>) {
+  stops.get(el)?.()
+  if (!originalDisplay.has(el)) originalDisplay.set(el, el.style.display)
+  const required = Array.isArray(binding.value) ? binding.value : [binding.value]
+  stops.set(el, watchEffect(() => { el.style.display = hasAnyPermission(required) ? originalDisplay.get(el)! : 'none' }, { flush: 'sync' }))
+}
 export const vPermission: Directive<HTMLElement, string | string[]> = {
-  mounted(el: HTMLElement, binding: DirectiveBinding<string | string[]>) {
-    const required = Array.isArray(binding.value) ? binding.value : [binding.value]
-    const allowed = required.some((p) => hasPermission(p))
-    if (!allowed && el.parentNode) {
-      el.parentNode.removeChild(el)
-    }
-  }
+  mounted: bind, updated: bind,
+  unmounted(el) { stops.get(el)?.(); stops.delete(el); originalDisplay.delete(el) }
 }

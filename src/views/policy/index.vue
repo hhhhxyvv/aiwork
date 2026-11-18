@@ -1,6 +1,13 @@
 <template>
   <div class="policy-page">
-    <div class="chat-window">
+    <el-alert title="本页政策问答与知识库维护为本地演示，未调用真实AI服务或保存到数据库。" type="info" :closable="false" />
+    <el-card v-if="hasPermission('policy:manage')" style="margin:16px 0">
+      <template #header>政策知识库维护（本地演示）</template>
+      <el-input v-model="policyKeyword" placeholder="关键词" />
+      <el-input v-model="policyContent" type="textarea" :rows="3" placeholder="政策说明" />
+      <el-button type="primary" @click="savePolicy">保存本地条目</el-button>
+    </el-card>
+    <div v-if="hasPermission('policy:qa:use')" class="chat-window">
       <!-- 顶部说明 -->
       <div class="chat-header">
         <div class="header-left">
@@ -10,7 +17,7 @@
             <p class="header-desc">基于 50+ 权威政策库进行语义检索与条款溯源</p>
           </div>
         </div>
-        <el-tag type="success" effect="dark" class="online-tag">在线</el-tag>
+        <el-tag type="success" effect="dark" class="online-tag">本地演示</el-tag>
       </div>
 
       <!-- 消息列表 -->
@@ -118,6 +125,8 @@
 </template>
 
 <script setup lang="ts">
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
 import { ref, nextTick, onMounted } from 'vue'
 import {
   Reading,
@@ -145,6 +154,12 @@ interface Message {
   typing?: boolean
 }
 
+const policyKeyword = ref(''), policyContent = ref('')
+function savePolicy() {
+  if (!hasPermission('policy:manage') || !policyKeyword.value.trim() || !policyContent.value.trim()) return
+  mockReplies[policyKeyword.value.trim()] = {content:policyContent.value.trim(),citations:[]}
+  policyKeyword.value = ''; policyContent.value = ''
+}
 // 快捷问题
 const quickTags = ['基层就业补贴', '三方协议注意事项', '高校毕业生免税政策']
 

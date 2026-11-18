@@ -1,7 +1,16 @@
 <template>
   <div class="interview-container">
+    <el-alert title="统计、候选人、帮扶台账和题库为本地演示；摄像头仅本机预览，未上传录制视频。评分请求依赖面试业务接口。" type="info" :closable="false" />
+    <el-card v-if="hasPermission('interview:question:manage')" style="margin:16px 0">
+      <template #header>模拟题库（本地演示）</template>
+      <el-input v-model="questionDraft" type="textarea" :rows="4" placeholder="每行一个题目" />
+      <el-button type="primary" @click="saveQuestions">保存本地题库</el-button>
+    </el-card>
+    <el-empty v-if="hasPermission('interview:candidate:review') && !hasPermission('interview:candidate:view')" description="已获得候选人复核权限；请配置候选人查看权限以选择记录。" />
+    <el-empty v-if="hasAnyPermission(['interview:coaching:record','interview:training:remind','interview:ledger:export']) && !hasPermission('student:warning:view')" description="已获得帮扶操作权限；请配置学生预警查看权限以选择对象。" />
+    <el-empty v-if="hasPermission('interview:supervision:send') && !hasPermission('interview:stats:view')" description="已获得督办权限；请配置面试统计查看权限以选择对象。" />
     <!-- ================= 1. 院系管理员：全院各专业 AI 面试学情与工作督办 ================= -->
-    <div v-if="role === 'admin'" class="role-box">
+    <div v-if="hasPermission('interview:stats:view')" class="role-box">
       <el-card shadow="hover">
         <template #header>
           <div class="header-flex">
@@ -9,7 +18,7 @@
               <span class="section-title">全院各专业毕业生模拟面试学情诊断总览</span>
               <span class="sub-tip">监控各专业参训率、面试均分与辅导员帮扶台账落实度</span>
             </div>
-            <el-button type="danger" plain @click="sendSupervisionOrder">一键下发学院重点督办令</el-button>
+            <el-button v-permission="'interview:supervision:send'" type="danger" plain @click="sendSupervisionOrder">一键下发学院重点督办令</el-button>
           </div>
         </template>
         <el-table :data="adminMajorStats" stripe style="width: 100%">
@@ -41,7 +50,7 @@
     </div>
 
     <!-- ================= 2. 企业 HR：AI 校招视频初筛中心 ================= -->
-    <div v-else-if="role === 'hr'" class="role-box">
+    <div v-if="hasPermission('interview:candidate:view')" class="role-box">
       <el-card shadow="hover">
         <template #header>
           <div class="header-flex">
@@ -71,8 +80,8 @@
           <el-table-column label="操作" width="200" fixed="right" align="center">
             <template #default="{ row }">
               <el-button link type="primary" @click="previewVideo(row)">看切片</el-button>
-              <el-button link type="success" :disabled="row.status !== 'pending'" @click="passCandidate(row)">发复试</el-button>
-              <el-button link type="danger" :disabled="row.status !== 'pending'" @click="rejectCandidate(row)">淘汰</el-button>
+              <el-button v-permission="'interview:candidate:review'" link type="success" :disabled="row.status !== 'pending'" @click="passCandidate(row)">发复试</el-button>
+              <el-button v-permission="'interview:candidate:review'" link type="danger" :disabled="row.status !== 'pending'" @click="rejectCandidate(row)">淘汰</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -80,7 +89,7 @@
     </div>
 
     <!-- ================= 3. 辅导员：班级面试学情与帮扶台账 ================= -->
-    <div v-else-if="role === 'counselor'" class="role-box">
+    <div v-if="hasPermission('student:warning:view')" class="role-box">
       <el-card shadow="hover">
         <template #header>
           <div class="header-flex">
@@ -89,8 +98,8 @@
               <span class="sub-tip">全班 45 人，已模考 37 人，低分预警 5 人</span>
             </div>
             <div>
-              <el-button type="primary" plain @click="remindStudents">一键催促未参训 (8人)</el-button>
-              <el-button type="success" @click="exportLedger">导出帮扶台账 (Excel)</el-button>
+              <el-button v-permission="'interview:training:remind'" type="primary" plain @click="remindStudents">一键催促未参训 (8人)</el-button>
+              <el-button v-permission="'interview:ledger:export'" type="success" @click="exportLedger">导出帮扶台账 (Excel)</el-button>
             </div>
           </div>
         </template>
@@ -106,7 +115,7 @@
           <el-table-column prop="weakness" label="AI 核心诊断薄弱项" min-width="220" />
           <el-table-column label="管理操作" width="140" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" @click="talkStudent(row)">{{ row.talked ? '已约谈' : '一键约谈' }}</el-button>
+              <el-button v-permission="'interview:coaching:record'" link type="primary" @click="talkStudent(row)">{{ row.talked ? '已约谈' : '一键约谈' }}</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -114,13 +123,13 @@
     </div>
 
     <!-- ================= 4. 学生：真视频摄像头实战面试 ================= -->
-    <div v-else class="role-box">
+    <div v-if="hasPermission('interview:practice:use')" class="role-box">
       <!-- 准备接通卡片 -->
       <div v-if="!isInterviewing" class="student-center">
         <el-card shadow="hover" class="student-card">
           <h2>🎯 AI 全真模拟视频面试 (学生实战)</h2>
           <p class="desc">点击下方按钮接通面试，系统将启动高清摄像头与麦克风，由 AI 面试官实时提问并生成诊断报告</p>
-          <el-button type="primary" size="large" @click="startInterview">接通面试 (开启音视频通话)</el-button>
+          <el-button v-permission="'interview:practice:use'" type="primary" size="large" @click="startInterview">接通面试 (开启音视频通话)</el-button>
         </el-card>
       </div>
 
@@ -154,7 +163,7 @@
             <div class="sub-text">{{ currentQuestion }}</div>
           </div>
           <div class="ctrl-btns">
-            <el-button type="primary" @click="nextQuestion">
+            <el-button v-permission="'interview:practice:use'" type="primary" @click="nextQuestion">
               {{ currentQuestionIndex < questionList.length - 1 ? '回答完毕 (下一题)' : '完成面试提交报告' }}
             </el-button>
             <el-button type="danger" @click="stopInterview">结束并退出面试</el-button>
@@ -195,12 +204,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, nextTick } from 'vue'
+import { hasPermission, hasAnyPermission } from '@/utils/permission'
+
+import { ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { finishInterview } from '@/api/interview'
 import type { InterviewRecord } from '@/api/types'
 
-const role = ref(localStorage.getItem('role') || 'student')
 
 // 1. 管理员数据
 const adminMajorStats = ref([
@@ -238,6 +248,13 @@ const questionList = ref([
   '在你的项目经历中，遇到的最大技术难题是什么？你是如何定位并解决的？',
   '谈谈你对 Vue3 响应式原理与组合式 API（Composition API）设计思想的理解。'
 ])
+const questionDraft = ref(questionList.value.join('\n'))
+function saveQuestions() {
+  if (!hasPermission('interview:question:manage')) return
+  const questions = questionDraft.value.split('\n').map(s => s.trim()).filter(Boolean)
+  if (!questions.length) return ElMessage.warning('至少保留一道题目')
+  questionList.value = questions; ElMessage.success('本地演示题库已更新，刷新页面后恢复')
+}
 const currentQuestionIndex = ref(0)
 const currentQuestion = ref(questionList.value[0])
 const countdown = ref(60)
@@ -256,6 +273,7 @@ const speakQuestion = (text: string) => {
 
 // 开启面试与摄像头
 const startInterview = async () => {
+  if (!hasPermission('interview:practice:use')) return
   try {
     isInterviewing.value = true
     await nextTick()
@@ -327,6 +345,7 @@ const report = ref<InterviewRecord>({
 })
 
 const finishReport = async () => {
+  if (!hasPermission('interview:practice:use')) return
   stopInterview()
   try {
     // 后端返回五维数据：roundScore / logicScore / completenessScore / expressionScore / realtimeFeedback
@@ -360,6 +379,7 @@ const stopInterview = () => {
 }
 
 // 组件卸载时释放硬件
+watch(() => hasPermission('interview:practice:use'), allowed => { if (!allowed) stopInterview() })
 onBeforeUnmount(() => {
   stopInterview()
 })

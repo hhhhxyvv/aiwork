@@ -1,12 +1,12 @@
 <template>
-  <div class="dept-container">
+  <div class="dept-container" v-permission="'dept:manage'">
     <!-- 顶部操作与说明卡片 -->
     <el-card shadow="never" class="header-card">
       <div class="header-content">
         <div>
           <h2 class="title">院系与专业组织架构</h2>
           <p class="subtitle">
-            基于数据库 <code>sys_dept</code> 表构建的树形层次结构，支持多级展开、实时搜索过滤与层级批量管理。
+            本地演示数据构建的树形层次结构（未接入数据库），支持多级展开、实时搜索过滤与层级批量管理。
           </p>
         </div>
         <div class="header-actions">
