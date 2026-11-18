@@ -41,7 +41,7 @@ export const routes: RouteRecordRaw[] = [
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
         meta: {
-          title: '首页概览',
+          title: '统计看板',
           icon: 'HomeFilled',
           requiresAuth: true,
         }

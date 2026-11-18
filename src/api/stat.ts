@@ -98,3 +98,16 @@ export function getDashboardStats() {
     () => request.get('/stat/dashboard').then((raw) => adaptDashboardStats(raw as unknown as Record<string, unknown>))
   )
 }
+
+export interface StatSnapshotTask {
+  id: string
+  status: 'QUEUED' | 'COMPLETED' | 'FAILED'
+}
+
+export function createStatSnapshotTask() {
+  return request.post('/stat/snapshot-tasks') as unknown as Promise<StatSnapshotTask>
+}
+
+export function getStatSnapshotTask(id: string) {
+  return request.get(`/stat/snapshot-tasks/${encodeURIComponent(id)}`) as unknown as Promise<StatSnapshotTask>
+}

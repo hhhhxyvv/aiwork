@@ -145,19 +145,19 @@ test('loads backend role IDs, names and additional roles instead of a fixed role
   assert.equal(h.calls[0].authorization, 'Bearer test-token')
 })
 
-test('reads fresh permissions by code and saves them to the selected backend role with PUT', async (t) => {
+test('saves the selected role by code and excludes management permissions for department admins', async (t) => {
   const h = harness()
   t.after(h.close)
   await h.ready()
   const role = h.state.roleList.find((role) => (role.id ?? role.roleId) === 4)
   await h.state.openAssignDialog(role)
-  assert.deepEqual(h.checked(), ['job:post:publish', 'sys:role:assign'])
-  h.check(['sys:role:assign'])
+  assert.deepEqual(h.checked(), ['job:post:publish'])
+  h.check(['job:post:publish', 'sys:role:assign'])
   await h.state.handleSave()
   const save = h.calls.find((call) => call.method === 'put')
   assert.ok(save, 'saving must call the existing PUT endpoint')
   assert.equal(save.url, '/system/roles/4/permissions')
-  assert.deepEqual(save.body, { permissions: ['sys:role:assign'] })
+  assert.deepEqual(save.body, { permissions: ['job:post:publish'] })
   assert.equal(h.state.dialogVisible, false)
 })
 

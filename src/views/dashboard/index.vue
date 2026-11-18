@@ -283,10 +283,19 @@
       <el-card v-permission="'stat:dashboard:view'" shadow="never" class="content-card stats-card">
         <template #header>
           <div class="card-header">
-            <span>全院就业数据统计</span>
+            <span>就业数据统计</span>
             <el-tag :type="statsReady ? 'success' : 'info'">{{ statsReady ? '接口数据' : '数据未加载' }}</el-tag>
           </div>
         </template>
+        <div v-if="hasPermission('stat:snapshot:create')" class="snapshot-task">
+          <el-button type="primary" :loading="snapshotSubmitting"
+                     :disabled="snapshotTask?.status === 'QUEUED'" @click="submitSnapshot">
+            生成统计快照
+          </el-button>
+          <span v-if="snapshotTask" role="status">{{ snapshotStatusLabels[snapshotTask.status] }}</span>
+          <el-button v-if="snapshotPollFailed && snapshotTask?.status === 'QUEUED'"
+                     link type="primary" @click="pollSnapshot">重新查询状态</el-button>
+        </div>
         <el-row :gutter="20">
           <el-col :span="7">
             <div class="stat-block">
@@ -355,9 +364,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDashboardStats } from '@/api/stat'
+import { createStatSnapshotTask, getDashboardStats, getStatSnapshotTask, type StatSnapshotTask } from '@/api/stat'
 import { hasPermission } from '@/utils/permission'
 import { userSession } from '@/store/user'
 import type { DashboardStats } from '@/api/types'
@@ -440,9 +449,49 @@ const stats = ref<DashboardStats>({
   salaryStats: { avgSalary: 0, maxSalary: 0, minSalary: 0 }
 })
 
+const snapshotStatusLabels = { QUEUED: '等待生成', COMPLETED: '快照已保存', FAILED: '生成失败，可重新提交' }
+const snapshotTask = ref<StatSnapshotTask>()
+const snapshotSubmitting = ref(false)
+const snapshotPollFailed = ref(false)
+let snapshotTimer: ReturnType<typeof setTimeout> | undefined
+let dashboardClosed = false
+
+async function submitSnapshot() {
+  if (!hasPermission('stat:dashboard:view') || !hasPermission('stat:snapshot:create')
+      || snapshotSubmitting.value || snapshotTask.value?.status === 'QUEUED') return
+  snapshotSubmitting.value = true
+  try {
+    snapshotTask.value = await createStatSnapshotTask()
+    void pollSnapshot()
+  } catch {
+    // 请求拦截器显示提交失败原因。
+  } finally {
+    snapshotSubmitting.value = false
+  }
+}
+
+async function pollSnapshot() {
+  const task = snapshotTask.value
+  if (dashboardClosed || task?.status !== 'QUEUED'
+      || !hasPermission('stat:dashboard:view') || !hasPermission('stat:snapshot:create')) return
+  snapshotPollFailed.value = false
+  try {
+    snapshotTask.value = await getStatSnapshotTask(task.id)
+    if (!dashboardClosed && snapshotTask.value.status === 'QUEUED') {
+      snapshotTimer = setTimeout(pollSnapshot, 2000)
+    }
+  } catch {
+    snapshotPollFailed.value = true
+  }
+}
+
+onUnmounted(() => {
+  dashboardClosed = true
+  if (snapshotTimer !== undefined) clearTimeout(snapshotTimer)
+})
+
 onMounted(async () => {
-  // 大屏接口要求 stat:dashboard:view 权限（仅管理员/辅导员授予），
-  // 学生等其他角色无权限，直接使用本地兜底数据，避免无谓的 403 请求
+  // 数据由后端按持有看板权限的角色的数据范围汇总。
   if (!hasPermission('stat:dashboard:view')) return
   try {
     stats.value = await getDashboardStats()
@@ -495,6 +544,13 @@ onMounted(async () => {
 }
 .metric-row {
   margin-bottom: 24px;
+}
+.snapshot-task {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 .metric-card {
   border-radius: 12px;

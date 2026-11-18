@@ -5,6 +5,9 @@
       <div>
         <h2 class="page-title">角色权限配置</h2>
         <p class="page-desc">按模块授予功能，保存后即时生效。清空勾选将撤销该角色全部功能。</p>
+        <el-button v-if="hasPermission('sys:data-scope:assign')" link type="primary" @click="goToAccountScopes">
+          配置账号的院系 / 班级归属
+        </el-button>
       </div>
     </div>
 
@@ -52,7 +55,7 @@
       </el-col>
     </el-row>
 
-    <el-card class="role-card">
+    <el-card id="account-scope-settings" class="role-card">
       <template #header>账号角色与院系班级归属</template>
       <el-form inline @submit.prevent="searchUsers">
         <el-input v-model="userKeyword" clearable placeholder="搜索用户名 / 姓名" style="width:240px" />
@@ -203,8 +206,10 @@ const openAssignDialog = async (role: RoleVO) => {
     if (!latestRole || !Array.isArray(latestRole.permissions)) throw new Error('角色不存在或权限数据不完整')
     roleList.value = roles
     currentRole.value = latestRole
-    permissionList.value = list
-    const availableCodes = new Set(list.map((item) => item.code))
+    const businessRole = ['ROLE_STUDENT', 'ROLE_ADMIN'].includes(latestRole.roleCode.toUpperCase())
+    const managementPermissions = ['sys:role:assign', 'sys:data-scope:assign']
+    permissionList.value = list.filter(item => !businessRole || !managementPermissions.includes(item.code))
+    const availableCodes = new Set(permissionList.value.map(item => item.code))
     await nextTick()
     if (requestId !== permissionRequestId || !dialogVisible.value) return
     treeRef.value?.setCheckedKeys(latestRole.permissions.filter((code) => availableCodes.has(code)), false)
@@ -291,6 +296,9 @@ async function loadUsers() {
   catch { userList.value = []; usersError.value = '加载账号失败，请重试' } finally { usersLoading.value = false }
 }
 async function searchUsers() { userPage.value = 1; await loadUsers() }
+function goToAccountScopes() {
+  document.getElementById('account-scope-settings')?.scrollIntoView({ block: 'start' })
+}
 const selectedUser = ref<UserVO|null>(null), selectedRoleCodes = ref<string[]>([]), userRolesVisible = ref(false), userSaving = ref(false)
 function openUserRoles(user:UserVO) { selectedUser.value = user; selectedRoleCodes.value = [...user.roleCodes]; userRolesVisible.value = true }
 async function saveUserRoles() {

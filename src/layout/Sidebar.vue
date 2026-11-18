@@ -48,7 +48,7 @@ onBeforeUnmount(() => {
 })
 
 const menuItems = [
-  { path: '/dashboard', title: '首页概览', icon: 'HomeFilled' },
+  { path: '/dashboard', title: '统计看板', icon: 'HomeFilled' },
   { path: '/resume', title: '简历中心', icon: 'Document' },
   { path: '/job', title: '岗位推荐', icon: 'Briefcase' },
   { path: '/interview', title: '面试辅导', icon: 'ChatLineRound' },
