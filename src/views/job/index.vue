@@ -1,6 +1,6 @@
 <template>
   <div class="job-container">
-    <el-alert title="本页岗位、审核、发布、推送及投递操作均为本地演示，未写入业务数据库。" type="info" :closable="false" />
+    <el-alert title="学生岗位列表及投递已连接真实后端；本页审核、HR 发布及班级推送仍为本地演示。" type="info" :closable="false" />
     <!-- ================= 1. 院系管理员视角：入校企业准入与安全风控审核 ================= -->
     <div v-if="hasPermission('job:post:audit')" class="role-box">
       <el-row :gutter="16" class="stat-cards">
@@ -140,7 +140,8 @@
           <span class="section-title">校园招聘与实习岗位大厅</span>
           <el-tag v-if="hasPermission('job:recommend:push')" type="warning">辅导员模式：可一键推送至班级群</el-tag>
         </div>
-        <el-table :data="publicJobList" stripe class="mt-4" style="width: 100%">
+        <el-alert v-if="jobsError" :title="jobsError" type="error" :closable="false" /><el-button link @click="loadJobs">刷新岗位</el-button>
+        <el-table v-loading="jobsLoading" :data="publicJobList" stripe class="mt-4" style="width: 100%">
           <el-table-column prop="company" label="企业名称" width="180" />
           <el-table-column prop="jobTitle" label="岗位名称" min-width="160" />
           <el-table-column label="薪资" width="170">
@@ -150,10 +151,11 @@
           <el-table-column label="操作" width="160" align="center">
             <template #default="{ row }">
               <el-button v-if="hasPermission('job:recommend:push')" link type="primary" @click="pushToClass(row)">一键推给全班</el-button>
-              <el-button v-permission="'job:apply:submit'" link type="primary" @click="applyJob(row)">投递简历</el-button>
+              <el-button v-permission="'job:apply:submit'" link type="primary" :loading="applying === row.id" @click="applyJob(row)">投递简历</el-button>
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination v-model:current-page="jobPage" :page-size="10" :total="jobTotal" layout="prev, pager, next" @current-change="loadJobs" />
       </el-card>
     </div>
   </div>
@@ -162,7 +164,11 @@
 <script setup lang="ts">
 import { hasPermission, hasAnyPermission } from '@/utils/permission'
 
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import request from '@/utils/request'
+import { listApplications, openChat } from '@/api/chat'
+const router = useRouter()
 import { ElMessage } from 'element-plus'
 
 
@@ -208,12 +214,40 @@ const toggleJobStatus = (row: any) => { row.status = row.status === 1 ? 0 : 1; E
 const deleteJob = (row: any) => { hrJobList.value = hrJobList.value.filter(j => j.id !== row.id); ElMessage.success('岗位已下线') }
 
 // 3. 学生与辅导员通用数据
-const publicJobList = ref([
-  { company: '华智未来科技', jobTitle: '前端开发实习生', minSalary: 4400, maxSalary: 6600, location: '北京' },
-  { company: '腾讯科技', jobTitle: '全栈开发工程师', minSalary: 15000, maxSalary: 20000, location: '深圳' }
-])
+const publicJobList = ref<any[]>([])
+const jobsLoading = ref(false)
+const jobsError = ref('')
+const jobPage = ref(1)
+const jobTotal = ref(0)
+async function loadJobs() {
+  if (!hasPermission('job:post:view')) return
+  jobsLoading.value = true; jobsError.value = ''
+  try {
+    const data = await request.get('/job/list', { params: { pageNum: jobPage.value, pageSize: 10 } }) as any
+    publicJobList.value = (data.records || []).map((job: any) => ({ ...job, company: job.publisherRole === 'HR' ? '企业招聘' : '校园岗位', location: job.city }))
+    jobTotal.value = data.total || 0
+  } catch { jobsError.value = '岗位加载失败，请重试'; publicJobList.value = [] }
+  finally { jobsLoading.value = false }
+}
+onMounted(loadJobs)
 const pushToClass = (row: any) => ElMessage.success(`已将“${row.company} - ${row.jobTitle}”定向推送给全班！`)
-const applyJob = (row: any) => ElMessage.success(`已向 ${row.company} 的「${row.jobTitle}」岗位投递简历！`)
+const applying = ref<number | null>(null)
+const applyJob = async (row: any) => {
+  if (applying.value) return
+  applying.value = row.id
+  try {
+    let existing = hasPermission('chat:view') ? (await listApplications()).find(a => a.jobId === row.id) : undefined
+    if (!existing) {
+      await request.post('/job/apply', { jobId: row.id })
+      ElMessage.success('简历投递成功')
+      if (hasPermission('chat:view')) existing = (await listApplications()).find(a => a.jobId === row.id)
+    }
+    if (existing && existing.publisherRole === 'HR' && hasPermission('chat:view')) {
+      const conversation = await openChat(existing.applicationId)
+      await router.push({ path: '/chat', query: { conversation: conversation.id } })
+    }
+  } finally { applying.value = null }
+}
 </script>
 
 <style scoped>

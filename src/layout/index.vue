@@ -45,6 +45,7 @@
         </div>
 
         <div class="nav-right">
+          <el-badge v-if="canAccessPath('/chat')" :value="unreadTotal" :hidden="!unreadTotal"><el-button link type="primary" @click="router.push('/chat')">招聘消息</el-button></el-badge>
           <el-button v-if="canAccessPath('/file-demo')" link type="primary" @click="router.push('/file-demo')">文件传输演示</el-button>
           <el-tag effect="dark" type="primary" class="role-badge">
             {{ userSession.roles.map(r => roleNameMap[r.replace(/^ROLE_/i, '').toLowerCase()] || r).join(' / ') || '未分配角色' }}
@@ -76,6 +77,8 @@
 </template>
 
 <script setup lang="ts">
+import { useChatConnection, unreadTotal } from "@/composables/useChatConnection"
+useChatConnection()
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

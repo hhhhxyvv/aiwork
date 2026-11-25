@@ -48,6 +48,7 @@ onBeforeUnmount(() => {
 })
 
 const menuItems = [
+  { path: "/chat", title: "招聘消息", icon: "ChatDotRound" },
   { path: '/dashboard', title: '统计看板', icon: 'HomeFilled' },
   { path: '/resume', title: '简历中心', icon: 'Document' },
   { path: '/job', title: '岗位推荐', icon: 'Briefcase' },

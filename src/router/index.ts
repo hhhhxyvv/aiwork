@@ -35,6 +35,7 @@ export const routes: RouteRecordRaw[] = [
     component: Layout,
     redirect: () => getLandingPath(),
     children: [
+      { path: "chat", name: "RecruitmentChat", component: () => import("@/views/chat/index.vue"), meta: { title: "招聘消息", icon: "ChatDotRound", requiresAuth: true } },
       { path: 'pending-authorization', name: 'PendingAuthorization', component: () => import('@/views/auth/PendingAuthorization.vue'), meta: { title: '等待授权', requiresAuth: true, hidden: true } },
       {
         path: 'dashboard',

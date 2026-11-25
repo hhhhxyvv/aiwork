@@ -133,6 +133,8 @@ test('business pages do not issue an unauthorized list request on mounting',asyn
       if(name==='vue')return vue
       if(name==='@/store/user')return session
       if(name==='@/utils/permission')return permission
+      if(name==='vue-router')return {useRouter:()=>({push:async()=>{}})}
+      if(name==='@/utils/request')return {get:async()=>({records:[],total:0})}
       if(name==='element-plus')return {ElMessage:{error(){},warning(){},success(){}}}
       if(name==='@element-plus/icons-vue')return {}
       if(name.startsWith('@/api/'))return new Proxy({}, {get:(_,key)=>async()=>{calls.push(key);return []}})
@@ -179,6 +181,8 @@ test('an account with multiple functional permissions renders all independent fe
       if(name==='vue')return vue
       if(name==='@/store/user')return session
       if(name==='@/utils/permission')return permission
+      if(name==='vue-router')return {useRouter:()=>({push:async()=>{}})}
+      if(name==='@/utils/request')return {get:async()=>({records:[],total:0})}
       if(name==='element-plus')return {ElMessage:{error(){},success(){}}}
       if(name==='@element-plus/icons-vue')return {}
       if(name.startsWith('@/api/'))return new Proxy({}, {get:()=>async()=>null})

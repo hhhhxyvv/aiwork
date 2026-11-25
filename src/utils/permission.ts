@@ -3,6 +3,7 @@ import { userSession } from '@/store/user'
 export function hasPermission(code: string): boolean { return userSession.permissions.includes(code) }
 export function hasAnyPermission(codes: readonly string[]): boolean { return codes.some(hasPermission) }
 export const pagePermissions: Record<string, string[]> = {
+  '/chat': ['chat:view'],
   '/dashboard': ['stat:dashboard:view'],
   '/resume': ['student:profile:view', 'student:resume:edit', 'student:resume:upload', 'student:resume:download', 'student:resume:diagnose', 'student:list:view', 'student:warning:view', 'resume:candidate:view', 'resume:candidate:invite', 'resume:candidate:reject', 'student:archive:remind'],
   '/job': ['job:post:view', 'job:post:publish', 'job:post:edit', 'job:post:audit', 'job:apply:submit', 'job:recommend:push'],
